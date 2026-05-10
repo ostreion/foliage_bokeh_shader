@@ -95,24 +95,25 @@ vec2 windField(vec2 p, float t) {
     return vec2(n1, n2) - 0.5;
 }
 
-// ---------- Branch silhouette field ----------
-// One or two thick coherent limbs at the canopy's defocus scale.
-// Low-frequency anisotropic product noise -> sparse, large soft
-// shapes rather than thin stripes. u_branchWidth controls the
-// perpendicular stretch, so high width = thicker limbs.
+// ---------- Branch field ----------
+// Branches are just another color contribution to the scene
+// (dark warm-brown matter), like green leaves or sky peeks.
+// Rare, but when they occur they're long: high anisotropy in the
+// branch direction, high threshold so coverage stays around 5-10%.
+// u_branchWidth controls cross-section thickness, u_leafCover
+// adds high-freq irregularity so the streaks fragment naturally.
 float branchField(vec2 uv) {
     float ca = cos(u_branchAngle), sa = sin(u_branchAngle);
     vec2  uvR0 = vec2(ca * uv.x - sa * uv.y,
                       sa * uv.x + ca * uv.y);
 
-    // Light wobble so limbs aren't perfectly straight
     vec2 wobble = vec2(vnoise(uvR0 * 0.5 + 5.1),
                        vnoise(uvR0 * 0.5 - 3.3)) - 0.5;
     vec2 uvR = uvR0 + wobble * 0.45;
 
-    // Lower the perpendicular stretch as branchWidth rises ->
-    // wider limb cross-section.
-    float aniso = mix(7.5, 2.4, u_branchWidth);
+    // High aniso (branches are LONG) - the perpendicular stretch
+    // is large so noise peaks form thin elongated ridges.
+    float aniso = mix(14.0, 5.0, u_branchWidth);
 
     vec2 br1 = vec2(uvR.x * 0.55,                uvR.y * aniso);
     vec2 br2 = vec2(uvR.x * 0.40 + uvR.y * 0.10, uvR.y * aniso * 0.55);
@@ -120,17 +121,15 @@ float branchField(vec2 uv) {
     float bnB = vnoise(br2 * 1.1 -  4.2);
     float bn  = bnA * bnB * 1.85;
 
-    // Per-position taper
     float widthMod = vnoise(uvR * vec2(0.22, 0.9) + 7.7) - 0.5;
     float thresh   = u_branchThresh + widthMod * 0.10;
 
-    float branch = smoothstep(thresh, thresh + 0.15, bn);
+    float branch = smoothstep(thresh, thresh + 0.10, bn);
 
-    // Foreground-leaf irregularity. High-frequency noise perturbs
-    // the silhouette: edges become ragged (so the limb doesn't
-    // look extruded), and bright "leaf gaps" poke through the
-    // interior so foreground foliage breaks up the dark mass.
-    // Two octaves give both individual-leaf and clump scales.
+    // Leaf irregularity: high-freq noise breaks up the streak so
+    // a single branch fragments into multiple discontinuous dark
+    // patches. Two octaves give both individual-leaf and clump
+    // scales.
     float leaf = vnoise(uv * 18.0 + 2.3) * 0.55
                + vnoise(uv *  9.0 - 5.1) * 0.45;
     leaf = (leaf - 0.5) * u_leafCover * 0.7;
@@ -170,12 +169,14 @@ vec3 sceneColor(vec2 uv, vec2 sunPos) {
     float sunMix = 1.0 - smoothstep(0.10, 1.0, d * k);
     col = mix(col, C_GOLD_BOK, sunMix * 0.85);
 
-    // Branch silhouettes: a darkening of the scene field, not a
-    // flat brown overpaint. The canopy color survives, just much
-    // dimmer (and slightly warmer-toned) where the branch is.
+    // Branches: dark warm-brown matter mixed into the scene.
+    // Disks sampling sceneColor at a branch cell will come up as
+    // dark-brown smears, naturally reading as long thin streaks
+    // through the bokeh field instead of a separate silhouette
+    // layer painted on top.
     float branch = branchField(uv);
-    float bAmt = branch * u_branchAmount;
-    col *= mix(vec3(1.0), vec3(0.20, 0.16, 0.12), bAmt);
+    vec3  branchColor = vec3(0.06, 0.038, 0.020);
+    col = mix(col, branchColor, branch * u_branchAmount);
 
     // Sparse sky-peek: pale, slightly cool. Warmer near the sun.
     float sn = vnoise(uv * 4.0 + vec2(0.0, tt * 0.5));
@@ -287,17 +288,14 @@ void main() {
     // 1. Background canopy
     vec3 col = background(uv, sunPos);
 
-    // Branch occlusion: disks behind a branch are blocked. But
-    // some foreground leaves still pass in front of the limb, so
-    // we never fully zero them - the silhouette stays soft and
-    // mottled rather than a hard pipe.
+    // Single bokeh layer. Disks sample sceneColor at their cell
+    // centre, so cells whose centre lands on branch matter come
+    // out dark-brown - the branches naturally emerge through the
+    // bokeh as occasional dark streaks of brown disks.
+    // Branch Occlusion can additionally cut disk brightness in
+    // the same area for a more silhouetted look (default 0).
     float bm = branchField(uv);
     float branchOcclude = bm * u_branchAmount * u_branchOcclude;
-
-    // Single bokeh layer at one characteristic disk size.
-    // Disk size variance is now per-cell inside bokehLayer.
-    // Disks are brighter samples of the same scene field, so they
-    // act as concentrated highlights of the local canopy color.
     vec3 fg = bokehLayer(
         uv,
         6.5 * u_zoom,
