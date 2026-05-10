@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Foliage Bokeh Shader</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(15, 20, 15, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            color: #eee;
+            width: 250px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            transition: opacity 0.3s;
+        }
+        #ui-panel:hover {
+            background: rgba(15, 20, 15, 0.85);
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+        .control-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #aaa;
+        }
+        input[type=range] {
+            width: 100%;
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]:focus {
+            outline: none;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 14px;
+            width: 14px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glcanvas"></canvas>
+    
+    <div id="ui-panel">
+        <div class="control-group">
+            <div class="control-header">
+                <span>Zoom Scale</span>
+                <span id="val-scale">1.0</span>
+            </div>
+            <input type="range" id="u_bokehScale" min="0.5" max="3.0" step="0.1" value="1.0">
+        </div>
+        <div class="control-group">
+            <div class="control-header">
+                <span>Bokeh Sharpness</span>
+                <span id="val-sharpness">0.8</span>
+            </div>
+            <input type="range" id="u_bokehSharpness" min="0.1" max="1.0" step="0.05" value="0.8">
+        </div>
+        <div class="control-group">
+            <div class="control-header">
+                <span>Sun Size</span>
+                <span id="val-sun">0.4</span>
+            </div>
+            <input type="range" id="u_sunSize" min="0.1" max="2.0" step="0.1" value="0.4">
+        </div>
+        <div class="control-group">
+            <div class="control-header">
+                <span>Ray Intensity</span>
+                <span id="val-ray">0.6</span>
+            </div>
+            <input type="range" id="u_rayIntensity" min="0.0" max="2.0" step="0.1" value="0.6">
+        </div>
+        <div class="control-group">
+            <div class="control-header">
+                <span>Wind Speed</span>
+                <span id="val-time">1.0</span>
+            </div>
+            <input type="range" id="u_timeScale" min="0.1" max="3.0" step="0.1" value="1.0">
+        </div>
+    </div>
+
+    <script src="main.js"></script>
+</body>
+</html>
