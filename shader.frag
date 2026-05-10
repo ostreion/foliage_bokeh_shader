@@ -20,6 +20,7 @@ uniform float u_branchThresh;
 uniform float u_branchAngle;     // radians, rotation of branch streaks
 uniform float u_branchWidth;     // 0 = thin, 1 = thick limbs
 uniform float u_branchOcclude;   // how much branches block bokeh (0..1)
+uniform float u_leafCover;       // foreground-leaf irregularity (0..1)
 uniform float u_skyAmount;
 uniform float u_skyThresh;
 uniform float u_greenScale;      // freq scale of base green variation
@@ -123,7 +124,19 @@ float branchField(vec2 uv) {
     float widthMod = vnoise(uvR * vec2(0.22, 0.9) + 7.7) - 0.5;
     float thresh   = u_branchThresh + widthMod * 0.10;
 
-    return smoothstep(thresh, thresh + 0.15, bn);
+    float branch = smoothstep(thresh, thresh + 0.15, bn);
+
+    // Foreground-leaf irregularity. High-frequency noise perturbs
+    // the silhouette: edges become ragged (so the limb doesn't
+    // look extruded), and bright "leaf gaps" poke through the
+    // interior so foreground foliage breaks up the dark mass.
+    // Two octaves give both individual-leaf and clump scales.
+    float leaf = vnoise(uv * 18.0 + 2.3) * 0.55
+               + vnoise(uv *  9.0 - 5.1) * 0.45;
+    leaf = (leaf - 0.5) * u_leafCover * 0.7;
+    branch = clamp(branch - leaf, 0.0, 1.0);
+
+    return branch;
 }
 
 // ---------- Unified scene field ----------

@@ -57,6 +57,7 @@ const SLIDERS = [
     ['u_branchAngle',    'branchAngle',    'val-branchAngle'],
     ['u_branchWidth',    'branchWidth',    'val-branchWidth'],
     ['u_branchOcclude',  'branchOcclude',  'val-branchOcclude'],
+    ['u_leafCover',      'leafCover',      'val-leafCover'],
     ['u_skyAmount',      'skyAmount',      'val-skyAmount'],
     ['u_skyThresh',      'skyThresh',      'val-skyThresh'],
     ['u_greenScale',     'greenScale',     'val-greenScale'],
