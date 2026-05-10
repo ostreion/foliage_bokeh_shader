@@ -19,6 +19,7 @@ uniform float u_branchAmount;
 uniform float u_branchThresh;
 uniform float u_branchAngle;     // radians, rotation of branch streaks
 uniform float u_branchWidth;     // 0 = thin, 1 = thick limbs
+uniform float u_branchOcclude;   // how much branches block bokeh (0..1)
 uniform float u_skyAmount;
 uniform float u_skyThresh;
 uniform float u_greenScale;      // freq scale of base green variation
@@ -156,10 +157,12 @@ vec3 sceneColor(vec2 uv, vec2 sunPos) {
     float sunMix = 1.0 - smoothstep(0.10, 1.0, d * k);
     col = mix(col, C_GOLD_BOK, sunMix * 0.85);
 
-    // Branch silhouettes (thick, coherent, defocused darkness)
+    // Branch silhouettes: a darkening of the scene field, not a
+    // flat brown overpaint. The canopy color survives, just much
+    // dimmer (and slightly warmer-toned) where the branch is.
     float branch = branchField(uv);
-    vec3  branchColor = vec3(0.055, 0.035, 0.018);
-    col = mix(col, branchColor, branch * u_branchAmount);
+    float bAmt = branch * u_branchAmount;
+    col *= mix(vec3(1.0), vec3(0.20, 0.16, 0.12), bAmt);
 
     // Sparse sky-peek: pale, slightly cool. Warmer near the sun.
     float sn = vnoise(uv * 4.0 + vec2(0.0, tt * 0.5));
@@ -271,11 +274,12 @@ void main() {
     // 1. Background canopy
     vec3 col = background(uv, sunPos);
 
-    // Branch occlusion: where a branch is, no canopy gap -> no
-    // light disk forms. We sample the branch field at the fragment
-    // and use it to suppress bokeh contribution from this pixel.
+    // Branch occlusion: disks behind a branch are blocked. But
+    // some foreground leaves still pass in front of the limb, so
+    // we never fully zero them - the silhouette stays soft and
+    // mottled rather than a hard pipe.
     float bm = branchField(uv);
-    float branchOcclude = bm * clamp(u_branchAmount * 1.05, 0.0, 1.0);
+    float branchOcclude = bm * u_branchAmount * u_branchOcclude;
 
     // Single bokeh layer at one characteristic disk size.
     // Disk size variance is now per-cell inside bokehLayer.
@@ -288,7 +292,7 @@ void main() {
         u_diskBrightness,
         sunPos
     );
-    fg *= (1.0 - branchOcclude * 0.95);
+    fg *= (1.0 - branchOcclude);
     col += fg;
 
     // 4. Minimal background sun: just a soft warm bloom on the right.
