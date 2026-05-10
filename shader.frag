@@ -18,6 +18,7 @@ uniform float u_bgMix;           // background dim factor
 uniform float u_branchAmount;
 uniform float u_branchThresh;
 uniform float u_branchAngle;     // radians, rotation of branch streaks
+uniform float u_branchWidth;     // 0 = thin, 1 = thick limbs
 uniform float u_skyAmount;
 uniform float u_skyThresh;
 uniform float u_greenScale;      // freq scale of base green variation
@@ -92,6 +93,38 @@ vec2 windField(vec2 p, float t) {
     return vec2(n1, n2) - 0.5;
 }
 
+// ---------- Branch silhouette field ----------
+// One or two thick coherent limbs at the canopy's defocus scale.
+// Low-frequency anisotropic product noise -> sparse, large soft
+// shapes rather than thin stripes. u_branchWidth controls the
+// perpendicular stretch, so high width = thicker limbs.
+float branchField(vec2 uv) {
+    float ca = cos(u_branchAngle), sa = sin(u_branchAngle);
+    vec2  uvR0 = vec2(ca * uv.x - sa * uv.y,
+                      sa * uv.x + ca * uv.y);
+
+    // Light wobble so limbs aren't perfectly straight
+    vec2 wobble = vec2(vnoise(uvR0 * 0.5 + 5.1),
+                       vnoise(uvR0 * 0.5 - 3.3)) - 0.5;
+    vec2 uvR = uvR0 + wobble * 0.45;
+
+    // Lower the perpendicular stretch as branchWidth rises ->
+    // wider limb cross-section.
+    float aniso = mix(7.5, 2.4, u_branchWidth);
+
+    vec2 br1 = vec2(uvR.x * 0.55,                uvR.y * aniso);
+    vec2 br2 = vec2(uvR.x * 0.40 + uvR.y * 0.10, uvR.y * aniso * 0.55);
+    float bnA = vnoise(br1 * 0.9 + 13.7);
+    float bnB = vnoise(br2 * 1.1 -  4.2);
+    float bn  = bnA * bnB * 1.85;
+
+    // Per-position taper
+    float widthMod = vnoise(uvR * vec2(0.22, 0.9) + 7.7) - 0.5;
+    float thresh   = u_branchThresh + widthMod * 0.10;
+
+    return smoothstep(thresh, thresh + 0.15, bn);
+}
+
 // ---------- Unified scene field ----------
 // Returns the local color of the canopy at uv. Used to:
 //   1. paint the background, and
@@ -123,42 +156,9 @@ vec3 sceneColor(vec2 uv, vec2 sunPos) {
     float sunMix = 1.0 - smoothstep(0.10, 1.0, d * k);
     col = mix(col, C_GOLD_BOK, sunMix * 0.85);
 
-    // Branches: looking from the ground up to the crown. We want a
-    // few curving paths, not a wall of vertical stripes.
-    //
-    //   1. Domain warp uv with a low-freq vector noise so the
-    //      streaks curve and bifurcate organically.
-    //   2. Two anisotropic noise samples at slightly different
-    //      stretches; multiply them so a branch only forms where
-    //      both align -> naturally sparse, occasional Y-shapes.
-    //   3. A slow perpendicular noise modulates the threshold so
-    //      branches taper / thicken along their length.
-    vec2 warp = vec2(vnoise(uv * 0.7 + 5.1),
-                     vnoise(uv * 0.7 - 3.3)) - 0.5;
-    warp *= 0.45;
-    vec2 uvW = uv + warp;
-
-    float ca = cos(u_branchAngle), sa = sin(u_branchAngle);
-    vec2  uvR = vec2(ca * uvW.x - sa * uvW.y,
-                     sa * uvW.x + ca * uvW.y);
-
-    // Strong anisotropy along the rotated axis
-    vec2  br1 = vec2(uvR.x * 1.0,
-                     uvR.y * 6.0);
-    vec2  br2 = vec2(uvR.x * 0.65 + uvR.y * 0.10,
-                     uvR.y * 3.5  - uvR.x * 0.05);
-    float bnA = vnoise(br1 * 1.7 + 13.7);
-    float bnB = vnoise(br2 * 2.2 -  4.2);
-    // Multiplying two ~[0,1] noises gives a sparse [0,1] field
-    // (means rare bright peaks). Boost slightly for headroom.
-    float bn = bnA * bnB * 1.8;
-
-    // Per-position width variation (taper)
-    float widthMod = vnoise(uvR * vec2(0.35, 1.8) + 7.7) - 0.5;
-    float thresh   = u_branchThresh + widthMod * 0.12;
-
-    float branch = smoothstep(thresh, thresh + 0.14, bn);
-    vec3  branchColor = vec3(0.075, 0.045, 0.022);
+    // Branch silhouettes (thick, coherent, defocused darkness)
+    float branch = branchField(uv);
+    vec3  branchColor = vec3(0.055, 0.035, 0.018);
     col = mix(col, branchColor, branch * u_branchAmount);
 
     // Sparse sky-peek: pale, slightly cool. Warmer near the sun.
@@ -271,6 +271,12 @@ void main() {
     // 1. Background canopy
     vec3 col = background(uv, sunPos);
 
+    // Branch occlusion: where a branch is, no canopy gap -> no
+    // light disk forms. We sample the branch field at the fragment
+    // and use it to suppress bokeh contribution from this pixel.
+    float bm = branchField(uv);
+    float branchOcclude = bm * clamp(u_branchAmount * 1.05, 0.0, 1.0);
+
     // Single bokeh layer at one characteristic disk size.
     // Disk size variance is now per-cell inside bokehLayer.
     // Disks are brighter samples of the same scene field, so they
@@ -282,6 +288,7 @@ void main() {
         u_diskBrightness,
         sunPos
     );
+    fg *= (1.0 - branchOcclude * 0.95);
     col += fg;
 
     // 4. Minimal background sun: just a soft warm bloom on the right.
