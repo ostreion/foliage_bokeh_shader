@@ -74,7 +74,8 @@ const SLIDERS = [
     ['u_sunSize',        'sunSize',        'val-sunSize'],
     ['u_sunBloom',       'sunBloom',       'val-sunBloom'],
     ['u_sunReach',       'sunReach',       'val-sunReach'],
-    ['u_rayIntensity',   'rayIntensity',   'val-rayIntensity']
+    ['u_rayIntensity',   'rayIntensity',   'val-rayIntensity'],
+    ['u_rayCount',       'rayCount',       'val-rayCount']
 ];
 
 const ui = {};

@@ -44,6 +44,7 @@ uniform float u_sunSize;
 uniform float u_sunBloom;        // halo strength
 uniform float u_sunReach;        // bloom falloff (smaller = wider)
 uniform float u_rayIntensity;
+uniform float u_rayCount;        // angular frequency of diffraction rays
 
 // ---------- Palette ----------
 const vec3 C_SHADOW    = vec3(0.012, 0.020, 0.008); // near-black canopy shadow
@@ -319,8 +320,10 @@ void main() {
     // 5. Subtle diffraction rays masked by a slow FBM (so they sprinkle)
     if (u_rayIntensity > 0.001) {
         float ang = atan(uv.y - sunPos.y, uv.x - sunPos.x);
-        float rays = sin(ang * 9.0 + u_time * 0.05 * u_windSpeed)
-                   * sin(ang * 17.0 - u_time * 0.03 * u_windSpeed);
+        // Two sines at related freqs give a beat pattern whose
+        // visible spike count tracks u_rayCount.
+        float rays = sin(ang * u_rayCount        + u_time * 0.05 * u_windSpeed)
+                   * sin(ang * u_rayCount * 1.85 - u_time * 0.03 * u_windSpeed);
         rays = smoothstep(0.85, 1.0, rays);
         float rayMask = fbm(uv * 8.0 + vec2(u_time * 0.05 * u_windSpeed, 0.0));
         rayMask = smoothstep(0.4, 0.7, rayMask);
