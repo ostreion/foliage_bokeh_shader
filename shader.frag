@@ -2,212 +2,250 @@
 precision highp float;
 #endif
 
-uniform vec2 u_resolution;
+uniform vec2  u_resolution;
 uniform float u_time;
 
-// UI Uniforms
-uniform float u_bokehScale;
-uniform float u_bokehSharpness;
+// Layout / camera
+uniform float u_zoom;          // overall scale of the scene
+uniform float u_density;       // gap threshold (more = brighter, more gaps)
+uniform float u_sharpness;     // 0 = soft cream, 1 = crisp disk
+uniform float u_warmth;        // 0 = uniform gold, 1 = strong green->gold gradient
+uniform float u_exposure;      // pre tone-map gain
+uniform float u_saturation;    // post saturation
+uniform float u_vignette;      // vignette strength
+
+// Wind / flicker
+uniform float u_windSpeed;     // overall time scale for wind & flicker
+uniform float u_windAmp;       // how much circles drift
+uniform float u_flickerDepth;  // 0 = no twinkle, 1 = full close-off
+uniform float u_flickerSpeed;  // twinkle rate
+
+// Sun
+uniform float u_sunX;
+uniform float u_sunY;
 uniform float u_sunSize;
 uniform float u_rayIntensity;
-uniform float u_timeScale;
 
-// Refined Color Palette
-const vec3 C_SKY = vec3(0.23, 0.29, 0.36); // Muted blue-grey sky
-const vec3 C_BRANCH = vec3(0.10, 0.07, 0.05); // Deep dark warm brown
-const vec3 C_DEEP_LEAF = vec3(0.08, 0.12, 0.06); // Dark green
-const vec3 C_MID_LEAF = vec3(0.15, 0.22, 0.08); // Medium green
-const vec3 C_SUN_LEAF = vec3(0.35, 0.38, 0.15); // Muted olive/gold
-const vec3 C_BOKEH_CORE = vec3(0.90, 0.79, 0.51); // Creamy gold
-const vec3 C_SUN_GLOW = vec3(1.0, 0.95, 0.85); // Soft white
+// ---------- Palette ----------
+const vec3 C_SHADOW    = vec3(0.012, 0.020, 0.008); // near-black canopy shadow
+const vec3 C_DEEP_LEAF = vec3(0.04,  0.07,  0.02);  // dark forest green base
+const vec3 C_GREEN_BOK = vec3(0.32,  0.46,  0.10);  // saturated forest-green bokeh
+const vec3 C_GOLD_BOK  = vec3(1.05,  0.72,  0.28);  // gold bokeh (near sun)
+const vec3 C_SKY_WARM  = vec3(0.45,  0.34,  0.16);  // warm sky tint
+const vec3 C_SUN_CORE  = vec3(1.0,   0.86,  0.58);
 
-// Basic hashes
+// ---------- Hashes & noise ----------
 vec2 hash22(vec2 p) {
-    vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
-    p3 += dot(p3, p3.yzx+33.33);
-    return fract((p3.xx+p3.yz)*p3.zy);
+    vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.xx + p3.yz) * p3.zy);
 }
 
-// Low frequency noise for background branches
-float noise(vec2 st) {
+float hash12(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+float vnoise(vec2 st) {
     vec2 i = floor(st);
     vec2 f = fract(st);
-    vec2 u = f*f*(3.0-2.0*f);
-    float a = dot(hash22(i + vec2(0.0,0.0)), f - vec2(0.0,0.0));
-    float b = dot(hash22(i + vec2(1.0,0.0)), f - vec2(1.0,0.0));
-    float c = dot(hash22(i + vec2(0.0,1.0)), f - vec2(0.0,1.0));
-    float d = dot(hash22(i + vec2(1.0,1.0)), f - vec2(1.0,1.0));
-    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y) + 0.5;
+    vec2 u = f*f*(3.0 - 2.0*f);
+    float a = hash12(i);
+    float b = hash12(i + vec2(1.0, 0.0));
+    float c = hash12(i + vec2(0.0, 1.0));
+    float d = hash12(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
-// Abstract Background (Sky + Branches)
-vec3 getBackground(vec2 uv) {
-    vec2 st = uv * 2.0;
-    st += vec2(u_time * 0.01, u_time * 0.02) * u_timeScale;
-    
-    // Create large, blurry branch structures
-    float branchNoise = noise(st) + 0.5 * noise(st * 2.0);
-    branchNoise = smoothstep(0.4, 0.8, branchNoise);
-    
-    return mix(C_SKY, C_BRANCH, branchNoise);
+float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 4; i++) {
+        v += a * vnoise(p);
+        p *= 2.02;
+        a *= 0.5;
+    }
+    return v;
 }
 
-// Cellular/Voronoi Distance for rigid leaf shapes, driven by fluid FBM wind
-float voronoi(vec2 x, vec2 windVector) {
-    vec2 n = floor(x);
-    vec2 f = fract(x);
-    float m = 8.0;
-    
-    for(int j=-1; j<=1; j++) {
-        for(int i=-1; i<=1; i++) {
-            vec2 g = vec2(float(i),float(j));
-            vec2 o = hash22(n + g);
-            // Apply the chaotic fluid wind vector to the rigid points
-            o = 0.5 + 0.5*sin(6.2831*o + windVector);
-            vec2 r = g - f + o;
-            float d = dot(r,r);
-            if(d < m) {
-                m = d;
-            }
+// 2D wind field: smooth, low-frequency, slowly evolving
+vec2 windField(vec2 p, float t) {
+    float n1 = fbm(p * 0.7 + vec2(t * 0.12, 0.0));
+    float n2 = fbm(p * 0.7 + vec2(11.3, t * 0.10));
+    return vec2(n1, n2) - 0.5;
+}
+
+// ---------- Sun-radial tint ----------
+vec3 bokehTint(vec2 uv, vec2 sunPos) {
+    float d = length(uv - sunPos);
+    // Near sun -> gold, far -> green. u_warmth biases overall hue.
+    // Steeper gradient so the off-sun side actually reads green.
+    float g = smoothstep(0.15, 0.9, d);
+    g = mix(g, g * 0.3, u_warmth); // warmth=1: more gold everywhere
+    return mix(C_GREEN_BOK, C_GOLD_BOK, 1.0 - g);
+}
+
+// ---------- Bokeh layer ----------
+// Each grid cell hosts one disk-of-confusion. The disk's
+//   - position drifts via low-freq wind FBM
+//   - intensity twinkles via per-cell FBM (gap opening/closing)
+//   - tint is set by proximity to the sun
+// Sampling 3x3 neighbours gives plenty of overlap when radius > 1 cell.
+vec3 bokehLayer(
+    vec2 uv,
+    float gridScale,
+    float radius,        // in cell units
+    float brightness,
+    vec2 sunPos
+) {
+    float t = u_time;
+    vec2 st    = uv * gridScale;
+    vec2 i_st  = floor(st);
+    vec2 f_st  = fract(st);
+
+    vec3 acc = vec3(0.0);
+
+    for (int j = -1; j <= 1; j++) {
+        for (int i = -1; i <= 1; i++) {
+            vec2 cell = i_st + vec2(float(i), float(j));
+            vec2 r    = hash22(cell);
+
+            // Drift: wind advects each leaf by a fraction of a cell
+            vec2 drift = windField(cell * 0.4, t * u_windSpeed) * u_windAmp;
+
+            // Centre of the disk inside this neighbour cell
+            vec2 pos  = vec2(float(i), float(j)) + r + drift;
+            vec2 diff = pos - f_st;
+            float dist = length(diff);
+
+            if (dist > radius * 1.05) continue;
+
+            // Twinkle: sample FBM at (cell, time). Smooth domain so no popping.
+            float ph = r.x * 6.2831;
+            float fl = fbm(cell * 0.9 + vec2(t * u_flickerSpeed * 0.5,
+                                             t * u_flickerSpeed * 0.37) + ph);
+            // Threshold against density: how often a gap is "open".
+            // density=0.5 -> ~half the cells open; higher density -> rarer gaps.
+            float gap = smoothstep(u_density - 0.10, u_density + 0.18, fl);
+            // flickerDepth controls residual brightness when FBM says closed.
+            // depth=1 -> hard close to 0; depth=0 -> always fully open.
+            gap = max(gap, 1.0 - u_flickerDepth);
+            if (gap < 0.005) continue;
+
+            // Soft disk
+            float blurAmt = mix(radius * 0.9, 0.04, u_sharpness);
+            float disk = smoothstep(radius, radius - blurAmt, dist);
+
+            // Subtle bright rim (real lens bokeh has a soft edge halo)
+            float rim = smoothstep(radius * 1.0, radius * 0.7, dist)
+                      - smoothstep(radius * 0.7, radius * 0.35, dist);
+            rim = max(rim, 0.0) * 0.35 * u_sharpness;
+
+            // Per-circle world-space UV for tinting
+            vec2 cellUV = (cell + r) / gridScale;
+            vec3 tint = bokehTint(cellUV, sunPos);
+
+            acc += (disk + rim) * gap * tint * brightness;
         }
     }
-    return sqrt(m);
+    return acc;
 }
 
-// Simulate the physical canopy: sharp gaps between rigid cells
-float getCanopyGap(vec2 uv, float scale, float layerDepth, float density) {
-    vec2 st = uv * scale;
-    
-    // Slow structural branch sway
-    st += vec2(u_time * 0.05, u_time * 0.02);
-    
-    // Calculate the fluid wind vector using FBM
-    vec2 windVector = vec2(
-        noise(st * 1.5 + u_time * 0.5),
-        noise(st * 1.5 - u_time * 0.4)
-    ) * 4.0; 
-    
-    // Use Voronoi for rigid leaf shapes, driven by the FBM wind
-    float v1 = voronoi(st, windVector);
-    
-    // Invert the mask: 0.0 means solid leaf (occlusion), 1.0 means full gap (light)
-    // We want the canopy to be mostly solid, with sharp, small gaps
-    // A lower v1 means we are closer to the center of a "gap" cell
-    return 1.0 - smoothstep(density - 0.2, density + 0.05, v1);
+// Background canopy: dark green with a warm halo around the sun
+vec3 background(vec2 uv, vec2 sunPos) {
+    // Slow, structural mottling
+    float n = fbm(uv * 1.6 + vec2(u_time * 0.02 * u_windSpeed, 0.0)) * 0.5
+            + fbm(uv * 4.0 - vec2(0.0, u_time * 0.015 * u_windSpeed)) * 0.5;
+    n = mix(0.55, 1.0, n);
+
+    vec3 base = mix(C_SHADOW, C_DEEP_LEAF, n);
+
+    // Warm halo from offscreen sun
+    float d = length(uv - sunPos);
+    float halo = exp(-d * 1.6);
+    base += C_SKY_WARM * halo * 0.55;
+
+    return base;
 }
 
-// Render strict geometric bokeh circles based on canopy gaps
-vec3 renderBokehLayer(vec2 uv, float baseGridScale, float layerDepth, float density, vec3 tintColor, float brightness) {
-    // Zoom out heavily: u_bokehScale=1.0 now equals dense, small bokeh
-    float gridScale = baseGridScale * u_bokehScale * 5.0; 
-    
-    vec2 st = uv * gridScale;
-    vec2 i_st = floor(st);
-    vec2 f_st = fract(st);
-
-    vec3 accColor = vec3(0.0);
-    
-    // Check neighbors to allow overlapping
-    for (int y = -2; y <= 2; y++) {
-        for (int x = -2; x <= 2; x++) {
-            vec2 neighbor = vec2(float(x), float(y));
-            
-            vec2 cellCenterUV = (i_st + neighbor + 0.5) / gridScale;
-            float gapLight = getCanopyGap(cellCenterUV, gridScale * 0.3, layerDepth, density);
-            
-            if (gapLight > 0.01) {
-                vec2 offset = hash22(i_st + neighbor) * 0.5 + 0.25;
-                vec2 diff = neighbor + offset - f_st;
-                
-                // Pure geometric distance
-                float dist = length(diff);
-                
-                // Radius is fixed per cell
-                float radius = 1.0 + layerDepth * 0.4;
-                
-                // Perfect geometric circle with sharpness controlled by UI
-                float blurAmt = (1.0 - u_bokehSharpness) * radius;
-                float circle = smoothstep(radius, radius - blurAmt - 0.01, dist);
-                
-                // Additive blending into the HDR buffer
-                accColor += circle * gapLight * tintColor * brightness;
-            }
-        }
-    }
-    return accColor;
-}
-
-// ACES Filmic Tone Mapping Curve
-// https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/
+// ACES Filmic tone mapping
 vec3 ACESFilm(vec3 x) {
-    float a = 2.51;
-    float b = 0.03;
-    float c = 2.43;
-    float d = 0.59;
-    float e = 0.14;
-    return clamp((x*(a*x+b))/(x*(c*x+d)+e), 0.0, 1.0);
+    const float a = 2.51;
+    const float b = 0.03;
+    const float c = 2.43;
+    const float d = 0.59;
+    const float e = 0.14;
+    return clamp((x * (a*x + b)) / (x * (c*x + d) + e), 0.0, 1.0);
 }
 
 void main() {
-    vec2 st = gl_FragCoord.xy / u_resolution.xy;
-    vec2 uv = st;
-    st.x *= u_resolution.x / u_resolution.y;
+    vec2 frag = gl_FragCoord.xy / u_resolution.xy;
+    vec2 uv = frag;
+    uv.x *= u_resolution.x / u_resolution.y;
 
-    // Start with the abstract sky/branch background
-    vec3 finalColor = getBackground(st);
-    
-    // Sun position (offscreen right)
-    vec2 sunPos = vec2(1.1 * (u_resolution.x/u_resolution.y), 0.5);
-    float sunDist = length(st - sunPos);
+    float aspect = u_resolution.x / u_resolution.y;
+    vec2 sunPos = vec2(u_sunX * aspect, u_sunY);
 
-    // 1. Deep Background Canopy (Dense, dark green, tiny gaps)
-    float deepMask = getCanopyGap(st, 8.0 * u_bokehScale, 0.5, 0.45);
-    finalColor = mix(finalColor, C_DEEP_LEAF, 0.85); // Occlude most of the sky
-    finalColor += C_MID_LEAF * deepMask * 0.4; // Tiny bits of deep light passing
+    // 1. Background canopy
+    vec3 col = background(uv, sunPos);
 
-    // 2. Midground Bokeh (Olive/Gold, medium size, high density)
-    vec3 midBokeh = renderBokehLayer(st, 12.0, 1.0, 0.5, C_SUN_LEAF, 0.8);
-    finalColor += midBokeh;
+    // 2. Deep midground bokeh layer (smaller, denser, greener)
+    vec3 mid = bokehLayer(
+        uv,
+        14.0 * u_zoom,
+        0.50,
+        0.30,
+        sunPos
+    );
+    col += mid;
 
-    // 3. Foreground Bokeh (Bright Cream/Gold, larger)
-    vec3 fgBokeh = renderBokehLayer(st, 6.0, 1.5, 0.6, C_BOKEH_CORE, 1.2);
-    finalColor += fgBokeh;
-    
-    // 4. Extreme Foreground Dark Leaves (Voronoi cell shadows)
-    float fgDarkLeaves = getCanopyGap(st, 3.0 * u_bokehScale, 2.0, 0.5);
-    // Darken the edges to simulate close, out-of-focus branches
-    finalColor = mix(finalColor, C_BRANCH * 0.3, (1.0 - fgDarkLeaves) * 0.6);
+    // 3. Foreground bokeh (larger, brighter, more gold)
+    vec3 fg = bokehLayer(
+        uv,
+        6.5 * u_zoom,
+        0.78,
+        0.42,
+        sunPos
+    );
+    col += fg;
 
-    // 5. Physics-Based Sun & Diffraction
-    // The sun core is shrunk heavily based on u_sunSize
-    float sunGlow = smoothstep(u_sunSize * 0.3, 0.0, sunDist);
-    finalColor += C_SUN_GLOW * pow(sunGlow, 3.0) * 2.0; // Additive intense core
-    
-    // Extended soft ambient glow
-    float ambientGlow = smoothstep(2.5, 0.0, sunDist);
-    finalColor += C_BOKEH_CORE * ambientGlow * 0.15 * u_sunSize;
-    
-    // Intense, distinct diffraction rays sprinkled through the leaves
-    float angle = atan(st.y - sunPos.y, st.x - sunPos.x);
-    float rays = sin(angle * 7.0 + u_time * u_timeScale * 0.1) * sin(angle * 19.0 - u_time * u_timeScale * 0.05);
-    rays = smoothstep(0.92, 1.0, rays); // Make them very sharp and distinct
-    
-    // Mask rays by a separate, high-frequency canopy so they "sprinkle" through
-    float rayMask = getCanopyGap(st, 15.0, 0.1, 0.5);
-    finalColor += C_SUN_GLOW * rays * ambientGlow * u_rayIntensity * rayMask * 3.0;
+    // 4. Minimal background sun: just a soft warm bloom on the right.
+    //    Kept additive but low-amplitude so ACES doesn't blow it out.
+    float sunDist = length(uv - sunPos);
+    float bloom   = exp(-sunDist * (1.6 / max(u_sunSize, 0.05)));
+    col += C_SUN_CORE * bloom * 0.55;
 
-    // --- Post-Processing ---
-    
-    // Apply ACES Filmic Tone Mapping to gracefully compress the additive HDR values
-    // This prevents the "giant white blob" bug
-    finalColor = ACESFilm(finalColor);
+    // Tiny crisp core only when sun is on-screen
+    float core = smoothstep(u_sunSize * 0.20, 0.0, sunDist);
+    col += C_SUN_CORE * pow(core, 4.0) * 0.6;
 
-    // Slight vignette
-    float vignette = 1.0 - smoothstep(0.5, 1.5, length(uv - 0.5));
-    finalColor *= mix(0.85, 1.0, vignette);
+    // 5. Subtle diffraction rays masked by a slow FBM (so they sprinkle)
+    if (u_rayIntensity > 0.001) {
+        float ang = atan(uv.y - sunPos.y, uv.x - sunPos.x);
+        float rays = sin(ang * 9.0 + u_time * 0.05 * u_windSpeed)
+                   * sin(ang * 17.0 - u_time * 0.03 * u_windSpeed);
+        rays = smoothstep(0.85, 1.0, rays);
+        float rayMask = fbm(uv * 8.0 + vec2(u_time * 0.05 * u_windSpeed, 0.0));
+        rayMask = smoothstep(0.4, 0.7, rayMask);
+        float rayFalloff = exp(-sunDist * 1.2);
+        col += C_SUN_CORE * rays * rayMask * rayFalloff * u_rayIntensity * 0.6;
+    }
 
-    // Gamma correction
-    finalColor = pow(finalColor, vec3(1.0/2.2));
+    // ---------- Post ----------
+    col *= u_exposure;
+    col = ACESFilm(col);
 
-    gl_FragColor = vec4(finalColor, 1.0);
+    // Saturation around tone-mapped luma
+    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    col = mix(vec3(luma), col, u_saturation);
+
+    // Vignette
+    float v = 1.0 - smoothstep(0.55, 1.15, length(frag - 0.5));
+    col *= mix(1.0 - u_vignette, 1.0, v);
+
+    // Gamma
+    col = pow(max(col, 0.0), vec3(1.0 / 2.2));
+
+    gl_FragColor = vec4(col, 1.0);
 }

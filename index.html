@@ -19,102 +19,144 @@
         }
         #ui-panel {
             position: absolute;
-            top: 20px;
-            left: 20px;
-            background: rgba(15, 20, 15, 0.7);
+            top: 16px;
+            left: 16px;
+            background: rgba(15, 20, 15, 0.72);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 12px;
-            padding: 20px;
+            padding: 14px 16px;
             color: #eee;
             width: 250px;
+            max-height: 92vh;
+            overflow-y: auto;
             box-shadow: 0 4px 20px rgba(0,0,0,0.5);
             transition: opacity 0.3s;
+            font-size: 11px;
         }
         #ui-panel:hover {
-            background: rgba(15, 20, 15, 0.85);
+            background: rgba(15, 20, 15, 0.88);
         }
+        .section-title {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            margin: 10px 0 6px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            padding-bottom: 4px;
+        }
+        .section-title:first-child { margin-top: 0; }
         .control-group {
-            margin-bottom: 15px;
-        }
-        .control-group:last-child {
-            margin-bottom: 0;
+            margin-bottom: 9px;
         }
         .control-header {
             display: flex;
             justify-content: space-between;
-            font-size: 12px;
-            margin-bottom: 5px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: #aaa;
+            font-size: 11px;
+            margin-bottom: 3px;
+            color: #ccc;
+        }
+        .control-header span:last-child {
+            color: #fff;
+            font-variant-numeric: tabular-nums;
         }
         input[type=range] {
             width: 100%;
             -webkit-appearance: none;
             background: transparent;
         }
-        input[type=range]:focus {
-            outline: none;
-        }
+        input[type=range]:focus { outline: none; }
         input[type=range]::-webkit-slider-runnable-track {
             width: 100%;
-            height: 4px;
+            height: 3px;
             cursor: pointer;
-            background: rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.18);
             border-radius: 2px;
         }
         input[type=range]::-webkit-slider-thumb {
-            height: 14px;
-            width: 14px;
+            height: 12px;
+            width: 12px;
             border-radius: 50%;
             background: #fff;
             cursor: pointer;
             -webkit-appearance: none;
-            margin-top: -5px;
+            margin-top: -4.5px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.5);
         }
     </style>
 </head>
 <body>
     <canvas id="glcanvas"></canvas>
-    
+
     <div id="ui-panel">
+        <div class="section-title">Layout</div>
         <div class="control-group">
-            <div class="control-header">
-                <span>Zoom Scale</span>
-                <span id="val-scale">1.0</span>
-            </div>
-            <input type="range" id="u_bokehScale" min="0.5" max="3.0" step="0.1" value="1.0">
+            <div class="control-header"><span>Zoom</span><span id="val-zoom">1.0</span></div>
+            <input type="range" id="u_zoom" min="0.4" max="3.0" step="0.05" value="1.0">
         </div>
         <div class="control-group">
-            <div class="control-header">
-                <span>Bokeh Sharpness</span>
-                <span id="val-sharpness">0.8</span>
-            </div>
-            <input type="range" id="u_bokehSharpness" min="0.1" max="1.0" step="0.05" value="0.8">
+            <div class="control-header"><span>Density</span><span id="val-density">0.55</span></div>
+            <input type="range" id="u_density" min="0.20" max="0.90" step="0.01" value="0.55">
         </div>
         <div class="control-group">
-            <div class="control-header">
-                <span>Sun Size</span>
-                <span id="val-sun">0.4</span>
-            </div>
-            <input type="range" id="u_sunSize" min="0.1" max="2.0" step="0.1" value="0.4">
+            <div class="control-header"><span>Sharpness</span><span id="val-sharpness">0.55</span></div>
+            <input type="range" id="u_sharpness" min="0.0" max="1.0" step="0.02" value="0.55">
+        </div>
+
+        <div class="section-title">Wind / Flicker</div>
+        <div class="control-group">
+            <div class="control-header"><span>Wind Speed</span><span id="val-windSpeed">1.0</span></div>
+            <input type="range" id="u_windSpeed" min="0.0" max="3.0" step="0.05" value="1.0">
         </div>
         <div class="control-group">
-            <div class="control-header">
-                <span>Ray Intensity</span>
-                <span id="val-ray">0.6</span>
-            </div>
-            <input type="range" id="u_rayIntensity" min="0.0" max="2.0" step="0.1" value="0.6">
+            <div class="control-header"><span>Wind Drift</span><span id="val-windAmp">0.35</span></div>
+            <input type="range" id="u_windAmp" min="0.0" max="1.2" step="0.02" value="0.35">
         </div>
         <div class="control-group">
-            <div class="control-header">
-                <span>Wind Speed</span>
-                <span id="val-time">1.0</span>
-            </div>
-            <input type="range" id="u_timeScale" min="0.1" max="3.0" step="0.1" value="1.0">
+            <div class="control-header"><span>Flicker Depth</span><span id="val-flickerDepth">1.0</span></div>
+            <input type="range" id="u_flickerDepth" min="0.0" max="1.0" step="0.02" value="1.0">
+        </div>
+        <div class="control-group">
+            <div class="control-header"><span>Flicker Speed</span><span id="val-flickerSpeed">1.0</span></div>
+            <input type="range" id="u_flickerSpeed" min="0.0" max="4.0" step="0.05" value="1.0">
+        </div>
+
+        <div class="section-title">Color</div>
+        <div class="control-group">
+            <div class="control-header"><span>Warmth</span><span id="val-warmth">0.35</span></div>
+            <input type="range" id="u_warmth" min="0.0" max="1.0" step="0.02" value="0.35">
+        </div>
+        <div class="control-group">
+            <div class="control-header"><span>Exposure</span><span id="val-exposure">0.85</span></div>
+            <input type="range" id="u_exposure" min="0.3" max="2.5" step="0.05" value="0.85">
+        </div>
+        <div class="control-group">
+            <div class="control-header"><span>Saturation</span><span id="val-saturation">1.15</span></div>
+            <input type="range" id="u_saturation" min="0.0" max="2.0" step="0.05" value="1.15">
+        </div>
+        <div class="control-group">
+            <div class="control-header"><span>Vignette</span><span id="val-vignette">0.25</span></div>
+            <input type="range" id="u_vignette" min="0.0" max="0.8" step="0.02" value="0.25">
+        </div>
+
+        <div class="section-title">Sun</div>
+        <div class="control-group">
+            <div class="control-header"><span>Sun X</span><span id="val-sunX">0.92</span></div>
+            <input type="range" id="u_sunX" min="0.5" max="1.4" step="0.01" value="0.92">
+        </div>
+        <div class="control-group">
+            <div class="control-header"><span>Sun Y</span><span id="val-sunY">0.55</span></div>
+            <input type="range" id="u_sunY" min="0.0" max="1.0" step="0.01" value="0.55">
+        </div>
+        <div class="control-group">
+            <div class="control-header"><span>Sun Size</span><span id="val-sunSize">0.35</span></div>
+            <input type="range" id="u_sunSize" min="0.05" max="1.5" step="0.02" value="0.35">
+        </div>
+        <div class="control-group">
+            <div class="control-header"><span>Ray Intensity</span><span id="val-rayIntensity">0.4</span></div>
+            <input type="range" id="u_rayIntensity" min="0.0" max="2.0" step="0.05" value="0.4">
         </div>
     </div>
 
