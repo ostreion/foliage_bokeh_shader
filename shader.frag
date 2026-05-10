@@ -25,11 +25,24 @@ uniform float u_skyAmount;
 uniform float u_skyThresh;
 uniform float u_greenScale;      // freq scale of base green variation
 
+// Rim / speckle
+uniform float u_rimChance;        // fraction of disks that get a rim (0..1)
+uniform float u_rimStrength;      // rim brightness multiplier
+uniform float u_rimThickness;     // 0 thin, 1 thick
+uniform float u_rimCoverageMin;   // min fraction of circumference (0..1)
+uniform float u_rimCoverageMax;   // max fraction of circumference (0..1)
+uniform float u_rimSpeckle;       // speckle amplitude on rim
+uniform float u_rimSpeckleScale;  // speckle frequency multiplier
+uniform float u_innerOpacity;     // body translucency multiplier
+
 // Color / post
 uniform float u_warmth;
 uniform float u_exposure;
 uniform float u_saturation;
 uniform float u_vignette;
+uniform float u_grainAmount;     // film grain intensity
+uniform float u_grainSize;       // grain pixel scale (>=1)
+uniform float u_grainColor;      // 0 = mono luma grain, 1 = full RGB chroma jitter
 
 // Wind / flicker
 uniform float u_windSpeed;
@@ -210,8 +223,14 @@ vec3 bokehLayer(
 
     vec3 acc = vec3(0.0);
 
-    for (int j = -1; j <= 1; j++) {
-        for (int i = -1; i <= 1; i++) {
+    // 5x5 neighbourhood. Needed because disks can exceed 1 cell of
+    // radius (Disk Size > 1.0 or Size Variance pushes max rad past
+    // a cell), in which case a 3x3 window clips them at cell
+    // boundaries and you see the grid as square artefacts. The
+    // `dist > rad * 1.15` early-continue keeps the cost small for
+    // small disks - outer ring just hashes + skips.
+    for (int j = -2; j <= 2; j++) {
+        for (int i = -2; i <= 2; i++) {
             vec2 cell = i_st + vec2(float(i), float(j));
             vec2 r    = hash22(cell);
 
@@ -221,13 +240,26 @@ vec3 bokehLayer(
             // Centre of the disk inside this neighbour cell
             vec2 pos  = vec2(float(i), float(j)) + r + drift;
             vec2 diff = pos - f_st;
-            float dist = length(diff);
 
             // Per-cell radius variance, controlled by u_sizeVar (full range).
             float rJitter = (hash12(cell + 7.31) - 0.5) * u_sizeVar;
             float rad = radius * (1.0 + rJitter);
 
-            if (dist > rad * 1.05) continue;
+            // Per-cell shape: small ellipse stretch + random orientation,
+            // so disks read as slightly off-round rather than identical
+            // circles. Stays subtle: ~+/-9% axis ratio.
+            float hShape = hash12(cell + 1.71);
+            float hRot   = hash12(cell + 4.37);
+            float stretch = (hShape - 0.5) * 0.18;
+            float ra = hRot * 6.2831;
+            float cR = cos(ra), sR = sin(ra);
+            vec2 diffR = vec2(cR * diff.x - sR * diff.y,
+                              sR * diff.x + cR * diff.y);
+            diffR.x *= 1.0 + stretch;
+            diffR.y *= 1.0 - stretch;
+            float dist = length(diffR);
+
+            if (dist > rad * 1.15) continue;
 
             // Twinkle: sample FBM at (cell, time). Smooth domain so no popping.
             float ph = r.x * 6.2831;
@@ -241,14 +273,57 @@ vec3 bokehLayer(
             gap = max(gap, 1.0 - u_flickerDepth);
             if (gap < 0.005) continue;
 
-            // Soft disk
-            float blurAmt = mix(rad * 0.9, 0.04, u_sharpness);
-            float disk = smoothstep(rad, rad - blurAmt, dist);
+            // Per-cell opacity character.
+            float hRim   = hash12(cell + 9.13);
+            float hInner = hash12(cell + 13.77);
+            float rimAmt       = mix(0.85, 1.35, hRim) * u_rimStrength;
+            float innerOpacity = mix(0.18, 0.45, hInner) * u_innerOpacity;
 
-            // Subtle bright rim (real lens bokeh has a soft edge halo)
-            float rim = smoothstep(rad * 1.0, rad * 0.7, dist)
-                      - smoothstep(rad * 0.7, rad * 0.35, dist);
-            rim = max(rim, 0.0) * 0.35 * u_sharpness;
+            // Soft body. No speckle - clean wash.
+            float blurAmt = mix(rad * 0.9, 0.04, u_sharpness);
+            float bodyShape = smoothstep(rad, rad - blurAmt, dist);
+            float disk = bodyShape * innerOpacity;
+
+            // Per-cell rim presence: only some disks get a rim. Hash
+            // gates it; soft-thresholded so the chance slider feels
+            // continuous instead of stepping.
+            float hHasRim   = hash12(cell + 31.71);
+            float rimGate   = smoothstep(0.05, 0.0, hHasRim - u_rimChance);
+
+            float rim = 0.0;
+            if (rimGate > 0.001) {
+                // Thicker, uneven band.
+                float ang = atan(diffR.y, diffR.x);
+                float wobR = vnoise(vec2(ang * 2.1 + hRot * 6.2831, hShape * 7.0)) - 0.5;
+                float wobW = vnoise(vec2(ang * 3.4 - hRim  * 5.1,    hInner * 4.3)) - 0.5;
+                float thick     = mix(0.04, 0.16, u_rimThickness);
+                float rimCenter = rad * (0.92 + wobR * 0.05);
+                float rimHalf   = rad * (thick + wobW * thick * 0.6);
+                float rimRadial = smoothstep(rimHalf, 0.0, abs(dist - rimCenter));
+
+                // Partial-circumference arc, per-cell start + coverage
+                // bounded by the user's min/max sliders.
+                float arcNorm  = ang / 6.2831 + 0.5;
+                float arcStart = hash12(cell + 17.71);
+                float covLo    = min(u_rimCoverageMin, u_rimCoverageMax);
+                float covHi    = max(u_rimCoverageMin, u_rimCoverageMax);
+                float arcCov   = mix(covLo, covHi, hash12(cell + 23.13));
+                float dArc     = fract(arcNorm - arcStart);
+                float feather  = 0.06;
+                float arcMask  = smoothstep(0.0, feather, dArc)
+                               * (1.0 - smoothstep(arcCov - feather, arcCov, dArc));
+
+                // Rim-only speckle.
+                float fScale = u_rimSpeckleScale;
+                float granA = vnoise(diffR * 55.0 * fScale + cell * 3.1) - 0.5;
+                float granB = vnoise(diffR * 28.0 * fScale - cell * 1.7) - 0.5;
+                float speck = granA * 0.7 + granB * 0.3;
+                float rimMod = 1.0 + speck * u_rimSpeckle;
+
+                rim = rimRadial * arcMask * max(rimMod, 0.0)
+                    * rimAmt * mix(0.75, 1.0, u_sharpness)
+                    * rimGate;
+            }
 
             // Per-circle world-space UV for tinting.
             // Disk samples the SAME scene field that paints the background,
@@ -346,6 +421,28 @@ void main() {
 
     // Gamma
     col = pow(max(col, 0.0), vec3(1.0 / 2.2));
+
+    // Analog film grain. One hash per pixel - effectively free.
+    // Sampled at floor(frag/grainSize) so grain reads larger than a
+    // single pixel (real film grain is ~2-3px clusters at this DPI).
+    // Time-quantised to ~24fps so it stutters like film, not video.
+    if (u_grainAmount > 0.0001) {
+        vec2 gp = floor(gl_FragCoord.xy / max(u_grainSize, 1.0));
+        // Static grain: no time term. Three hashes give per-channel
+        // chroma jitter; still ~free (one hash = a few muls + fract).
+        // grainColor=0 collapses RGB to a shared luma grain.
+        float gR = hash12(gp + vec2(0.0,  0.0)) - 0.5;
+        float gG = hash12(gp + vec2(17.3, 5.1)) - 0.5;
+        float gB = hash12(gp + vec2(-9.7, 23.7)) - 0.5;
+        float gM = (gR + gG + gB) * (1.0 / 3.0);
+        vec3  grain = mix(vec3(gM), vec3(gR, gG, gB), u_grainColor);
+
+        // Bias grain into shadows/midtones so highlights stay clean,
+        // matching how silver halide grain behaves on film.
+        float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+        float w = mix(1.0, 0.4, smoothstep(0.6, 1.0, luma));
+        col += grain * u_grainAmount * w;
+    }
 
     gl_FragColor = vec4(col, 1.0);
 }

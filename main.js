@@ -52,6 +52,14 @@ const SLIDERS = [
     ['u_sizeVar',        'sizeVar',        'val-sizeVar'],
     ['u_diskBrightness', 'diskBrightness', 'val-diskBrightness'],
     ['u_bgMix',          'bgMix',          'val-bgMix'],
+    ['u_rimChance',       'rimChance',       'val-rimChance'],
+    ['u_rimStrength',     'rimStrength',     'val-rimStrength'],
+    ['u_rimThickness',    'rimThickness',    'val-rimThickness'],
+    ['u_rimCoverageMin',  'rimCoverageMin',  'val-rimCoverageMin'],
+    ['u_rimCoverageMax',  'rimCoverageMax',  'val-rimCoverageMax'],
+    ['u_rimSpeckle',      'rimSpeckle',      'val-rimSpeckle'],
+    ['u_rimSpeckleScale', 'rimSpeckleScale', 'val-rimSpeckleScale'],
+    ['u_innerOpacity',    'innerOpacity',    'val-innerOpacity'],
     ['u_branchAmount',   'branchAmount',   'val-branchAmount'],
     ['u_branchThresh',   'branchThresh',   'val-branchThresh'],
     ['u_branchAngle',    'branchAngle',    'val-branchAngle'],
@@ -69,6 +77,9 @@ const SLIDERS = [
     ['u_exposure',       'exposure',       'val-exposure'],
     ['u_saturation',     'saturation',     'val-saturation'],
     ['u_vignette',       'vignette',       'val-vignette'],
+    ['u_grainAmount',    'grainAmount',    'val-grainAmount'],
+    ['u_grainSize',      'grainSize',      'val-grainSize'],
+    ['u_grainColor',     'grainColor',     'val-grainColor'],
     ['u_sunX',           'sunX',           'val-sunX'],
     ['u_sunY',           'sunY',           'val-sunY'],
     ['u_sunSize',        'sunSize',        'val-sunSize'],
@@ -176,19 +187,56 @@ async function init() {
     let baseTime = 0;
     let lastNow = 0;
 
+    // Device-aware quality. Mobile/touch devices get a lower internal
+    // resolution; desktop pushes higher. DPR is capped so retina
+    // displays don't render at 2x and tank perf - a slight upscale
+    // through CSS is invisible on this kind of soft, blurry imagery.
+    const isMobile = matchMedia('(pointer: coarse)').matches
+                  || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+    const baseQuality = isMobile ? 0.55 : 0.75;
+    const dprCap      = isMobile ? 1.25 : 1.5;
+
+    // Pause render loop when canvas is off-screen or tab is hidden.
+    // Saves battery / GPU when the shader is in a section the user
+    // has scrolled past or another tab is in front.
+    let visible = true;
+    let tabActive = !document.hidden;
+    document.addEventListener('visibilitychange', () => {
+        tabActive = !document.hidden;
+        if (tabActive && visible) requestAnimationFrame(render);
+    });
+    if ('IntersectionObserver' in window) {
+        const io = new IntersectionObserver((entries) => {
+            for (const e of entries) {
+                const wasVisible = visible;
+                visible = e.isIntersecting;
+                if (visible && !wasVisible && tabActive) {
+                    requestAnimationFrame(render);
+                }
+            }
+        }, { threshold: 0.0 });
+        io.observe(canvas);
+    }
+
     function render(now) {
+        if (!visible || !tabActive) return;
+
         now *= 0.001;
         let dt = now - lastNow;
         if (dt > 0.1) dt = 0.016;
         lastNow = now;
         baseTime += dt;
 
-        // Render at 0.75x for cheaper devices; can be raised later.
-        const quality = 0.75;
-        const dispW = canvas.clientWidth;
-        const dispH = canvas.clientHeight;
-        const targetW = Math.floor(dispW * quality);
-        const targetH = Math.floor(dispH * quality);
+        // Render only what's actually shown. canvas.clientWidth/Height
+        // are CSS pixels - the shader runs at this size * quality *
+        // capped DPR, regardless of how the page is laid out. So a
+        // small canvas on iPhone renders few pixels even though the
+        // shader is identical to desktop.
+        const dpr     = Math.min(window.devicePixelRatio || 1, dprCap);
+        const dispW   = canvas.clientWidth;
+        const dispH   = canvas.clientHeight;
+        const targetW = Math.max(1, Math.floor(dispW * baseQuality * dpr));
+        const targetH = Math.max(1, Math.floor(dispH * baseQuality * dpr));
         if (canvas.width !== targetW || canvas.height !== targetH) {
             canvas.width = targetW;
             canvas.height = targetH;
