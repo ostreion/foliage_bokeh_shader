@@ -63,17 +63,54 @@ const SLIDERS = [
 ];
 
 const ui = {};
+const STORAGE_KEY = 'foliage-bokeh-ui-v1';
+
+function loadCachedUI() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+}
+
+function saveCachedUI() {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(ui));
+    } catch (e) {}
+}
 
 function setupUI() {
+    const cached = loadCachedUI();
     SLIDERS.forEach(([id, key, valId]) => {
         const el = document.getElementById(id);
         const valEl = document.getElementById(valId);
+        // Apply cached value if it parses and is within slider bounds
+        if (typeof cached[key] === 'number' && isFinite(cached[key])) {
+            const min = parseFloat(el.min), max = parseFloat(el.max);
+            const c = Math.max(min, Math.min(max, cached[key]));
+            el.value = String(c);
+        }
         ui[key] = parseFloat(el.value);
         valEl.innerText = parseFloat(el.value).toFixed(2);
         el.addEventListener('input', (e) => {
             const v = parseFloat(e.target.value);
             ui[key] = v;
             valEl.innerText = v.toFixed(2);
+            saveCachedUI();
+        });
+    });
+
+    // Optional: double-click any value to reset that slider to its HTML default
+    SLIDERS.forEach(([id, key, valId]) => {
+        const valEl = document.getElementById(valId);
+        const el = document.getElementById(id);
+        valEl.style.cursor = 'pointer';
+        valEl.title = 'Double-click to reset';
+        valEl.addEventListener('dblclick', () => {
+            const def = el.getAttribute('value');
+            el.value = def;
+            ui[key] = parseFloat(def);
+            valEl.innerText = parseFloat(def).toFixed(2);
+            saveCachedUI();
         });
     });
 }

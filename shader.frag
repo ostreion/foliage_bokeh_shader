@@ -79,11 +79,13 @@ vec2 windField(vec2 p, float t) {
 // ---------- Sun-radial tint ----------
 vec3 bokehTint(vec2 uv, vec2 sunPos) {
     float d = length(uv - sunPos);
-    // Near sun -> gold, far -> green. u_warmth biases overall hue.
-    // Steeper gradient so the off-sun side actually reads green.
-    float g = smoothstep(0.15, 0.9, d);
-    g = mix(g, g * 0.3, u_warmth); // warmth=1: more gold everywhere
-    return mix(C_GREEN_BOK, C_GOLD_BOK, 1.0 - g);
+    // Warmth re-scales perceived distance to the sun.
+    // warmth = 0   -> distances feel ~2x farther -> mostly green
+    // warmth = 0.5 -> natural radial gradient
+    // warmth = 1   -> distances feel ~0.4x -> mostly gold everywhere
+    float k = mix(2.0, 0.4, u_warmth);
+    float g = smoothstep(0.15, 0.95, d * k);
+    return mix(C_GOLD_BOK, C_GREEN_BOK, g);
 }
 
 // ---------- Bokeh layer ----------
@@ -119,7 +121,12 @@ vec3 bokehLayer(
             vec2 diff = pos - f_st;
             float dist = length(diff);
 
-            if (dist > radius * 1.05) continue;
+            // Per-cell radius variance: roughly +/- 6% around the base.
+            // hash12 -> [0,1] -> [-1,1] * 0.06
+            float rJitter = (hash12(cell + 7.31) - 0.5) * 0.12;
+            float rad = radius * (1.0 + rJitter);
+
+            if (dist > rad * 1.05) continue;
 
             // Twinkle: sample FBM at (cell, time). Smooth domain so no popping.
             float ph = r.x * 6.2831;
@@ -134,12 +141,12 @@ vec3 bokehLayer(
             if (gap < 0.005) continue;
 
             // Soft disk
-            float blurAmt = mix(radius * 0.9, 0.04, u_sharpness);
-            float disk = smoothstep(radius, radius - blurAmt, dist);
+            float blurAmt = mix(rad * 0.9, 0.04, u_sharpness);
+            float disk = smoothstep(rad, rad - blurAmt, dist);
 
             // Subtle bright rim (real lens bokeh has a soft edge halo)
-            float rim = smoothstep(radius * 1.0, radius * 0.7, dist)
-                      - smoothstep(radius * 0.7, radius * 0.35, dist);
+            float rim = smoothstep(rad * 1.0, rad * 0.7, dist)
+                      - smoothstep(rad * 0.7, rad * 0.35, dist);
             rim = max(rim, 0.0) * 0.35 * u_sharpness;
 
             // Per-circle world-space UV for tinting
@@ -190,22 +197,13 @@ void main() {
     // 1. Background canopy
     vec3 col = background(uv, sunPos);
 
-    // 2. Deep midground bokeh layer (smaller, denser, greener)
-    vec3 mid = bokehLayer(
-        uv,
-        14.0 * u_zoom,
-        0.50,
-        0.30,
-        sunPos
-    );
-    col += mid;
-
-    // 3. Foreground bokeh (larger, brighter, more gold)
+    // Single bokeh layer at one characteristic disk size.
+    // Disk size variance (+/- ~6%) is now per-cell inside bokehLayer.
     vec3 fg = bokehLayer(
         uv,
         6.5 * u_zoom,
         0.78,
-        0.42,
+        0.55,
         sunPos
     );
     col += fg;
@@ -240,8 +238,9 @@ void main() {
     float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
     col = mix(vec3(luma), col, u_saturation);
 
-    // Vignette
-    float v = 1.0 - smoothstep(0.55, 1.15, length(frag - 0.5));
+    // Vignette: stronger and more visible
+    float vd = length(frag - 0.5);
+    float v = 1.0 - smoothstep(0.30, 0.85, vd);
     col *= mix(1.0 - u_vignette, 1.0, v);
 
     // Gamma
