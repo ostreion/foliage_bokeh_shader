@@ -51,9 +51,8 @@ vec3 getBackground(vec2 uv) {
     return mix(C_SKY, C_BRANCH, branchNoise);
 }
 
-// Cellular/Voronoi Distance for rigid leaf shapes
-// Returns distance to the closest "gap" center
-float voronoi(vec2 x, float timeOffset) {
+// Cellular/Voronoi Distance for rigid leaf shapes, driven by fluid FBM wind
+float voronoi(vec2 x, vec2 windVector) {
     vec2 n = floor(x);
     vec2 f = fract(x);
     float m = 8.0;
@@ -62,8 +61,8 @@ float voronoi(vec2 x, float timeOffset) {
         for(int i=-1; i<=1; i++) {
             vec2 g = vec2(float(i),float(j));
             vec2 o = hash22(n + g);
-            // Animate the points (leaves fluttering)
-            o = 0.5 + 0.5*sin(u_time * u_timeScale * 2.0 + 6.2831*o + timeOffset);
+            // Apply the chaotic fluid wind vector to the rigid points
+            o = 0.5 + 0.5*sin(6.2831*o + windVector);
             vec2 r = g - f + o;
             float d = dot(r,r);
             if(d < m) {
@@ -75,18 +74,25 @@ float voronoi(vec2 x, float timeOffset) {
 }
 
 // Simulate the physical canopy: sharp gaps between rigid cells
-float getCanopyGap(vec2 uv, float scale, float speed, float density) {
+float getCanopyGap(vec2 uv, float scale, float layerDepth, float density) {
     vec2 st = uv * scale;
-    // Slow branch sway
-    st += vec2(u_time * speed, u_time * speed * 0.5) * u_timeScale;
     
-    // Use Voronoi for rigid leaf shapes instead of fluid oil FBM
-    // Lower Voronoi distance means we are near the center of a "gap"
-    float v1 = voronoi(st, 0.0);
+    // Slow structural branch sway
+    st += vec2(u_time * 0.05, u_time * 0.02);
     
-    // Smoothstep creates the distinct, slightly blurred edges of the leaves
-    // Invert so 1.0 is the gap (light passing), 0.0 is solid leaf
-    return 1.0 - smoothstep(density - 0.2, density + 0.1, v1);
+    // Calculate the fluid wind vector using FBM
+    vec2 windVector = vec2(
+        noise(st * 1.5 + u_time * 0.5),
+        noise(st * 1.5 - u_time * 0.4)
+    ) * 4.0; 
+    
+    // Use Voronoi for rigid leaf shapes, driven by the FBM wind
+    float v1 = voronoi(st, windVector);
+    
+    // Invert the mask: 0.0 means solid leaf (occlusion), 1.0 means full gap (light)
+    // We want the canopy to be mostly solid, with sharp, small gaps
+    // A lower v1 means we are closer to the center of a "gap" cell
+    return 1.0 - smoothstep(density - 0.2, density + 0.05, v1);
 }
 
 // Render strict geometric bokeh circles based on canopy gaps
@@ -106,7 +112,7 @@ vec3 renderBokehLayer(vec2 uv, float baseGridScale, float layerDepth, float dens
             vec2 neighbor = vec2(float(x), float(y));
             
             vec2 cellCenterUV = (i_st + neighbor + 0.5) / gridScale;
-            float gapLight = getCanopyGap(cellCenterUV, gridScale * 0.3, 0.05 * layerDepth, density);
+            float gapLight = getCanopyGap(cellCenterUV, gridScale * 0.3, layerDepth, density);
             
             if (gapLight > 0.01) {
                 vec2 offset = hash22(i_st + neighbor) * 0.5 + 0.25;
@@ -154,20 +160,20 @@ void main() {
     float sunDist = length(st - sunPos);
 
     // 1. Deep Background Canopy (Dense, dark green, tiny gaps)
-    float deepMask = getCanopyGap(st, 8.0 * u_bokehScale, 0.02, 0.3);
-    finalColor = mix(finalColor, C_DEEP_LEAF, 0.8); // Occlude most of the sky
-    finalColor += C_MID_LEAF * deepMask * 0.5; // Tiny bits of deep light passing
+    float deepMask = getCanopyGap(st, 8.0 * u_bokehScale, 0.5, 0.45);
+    finalColor = mix(finalColor, C_DEEP_LEAF, 0.85); // Occlude most of the sky
+    finalColor += C_MID_LEAF * deepMask * 0.4; // Tiny bits of deep light passing
 
     // 2. Midground Bokeh (Olive/Gold, medium size, high density)
-    vec3 midBokeh = renderBokehLayer(st, 12.0, 1.0, 0.5, C_SUN_LEAF, 0.5);
+    vec3 midBokeh = renderBokehLayer(st, 12.0, 1.0, 0.5, C_SUN_LEAF, 0.8);
     finalColor += midBokeh;
 
     // 3. Foreground Bokeh (Bright Cream/Gold, larger)
-    vec3 fgBokeh = renderBokehLayer(st, 6.0, 1.5, 0.6, C_BOKEH_CORE, 0.8);
+    vec3 fgBokeh = renderBokehLayer(st, 6.0, 1.5, 0.6, C_BOKEH_CORE, 1.2);
     finalColor += fgBokeh;
     
     // 4. Extreme Foreground Dark Leaves (Voronoi cell shadows)
-    float fgDarkLeaves = getCanopyGap(st, 3.0 * u_bokehScale, 0.06, 0.4);
+    float fgDarkLeaves = getCanopyGap(st, 3.0 * u_bokehScale, 2.0, 0.5);
     // Darken the edges to simulate close, out-of-focus branches
     finalColor = mix(finalColor, C_BRANCH * 0.3, (1.0 - fgDarkLeaves) * 0.6);
 
@@ -186,8 +192,8 @@ void main() {
     rays = smoothstep(0.92, 1.0, rays); // Make them very sharp and distinct
     
     // Mask rays by a separate, high-frequency canopy so they "sprinkle" through
-    float rayMask = getCanopyGap(st, 15.0, 0.01, 0.3);
-    finalColor += C_SUN_GLOW * rays * ambientGlow * u_rayIntensity * rayMask * 2.0;
+    float rayMask = getCanopyGap(st, 15.0, 0.1, 0.5);
+    finalColor += C_SUN_GLOW * rays * ambientGlow * u_rayIntensity * rayMask * 3.0;
 
     // --- Post-Processing ---
     

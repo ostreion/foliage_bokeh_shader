@@ -124,7 +124,9 @@ async function init() {
         
         // Integrate time using timeScale so it doesn't jump
         let dt = now - lastNow;
+        if (dt > 0.1) dt = 0.016; // Prevent huge jumps if tab was inactive
         lastNow = now;
+        
         baseTime += dt * uiState.timeScale;
 
         const displayWidth  = canvas.clientWidth;
