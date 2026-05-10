@@ -123,14 +123,41 @@ vec3 sceneColor(vec2 uv, vec2 sunPos) {
     float sunMix = 1.0 - smoothstep(0.10, 1.0, d * k);
     col = mix(col, C_GOLD_BOK, sunMix * 0.85);
 
-    // Elongated branch streaks: rotate, then anisotropically stretch
-    // (5x along one axis), then threshold a noise sample.
+    // Branches: looking from the ground up to the crown. We want a
+    // few curving paths, not a wall of vertical stripes.
+    //
+    //   1. Domain warp uv with a low-freq vector noise so the
+    //      streaks curve and bifurcate organically.
+    //   2. Two anisotropic noise samples at slightly different
+    //      stretches; multiply them so a branch only forms where
+    //      both align -> naturally sparse, occasional Y-shapes.
+    //   3. A slow perpendicular noise modulates the threshold so
+    //      branches taper / thicken along their length.
+    vec2 warp = vec2(vnoise(uv * 0.7 + 5.1),
+                     vnoise(uv * 0.7 - 3.3)) - 0.5;
+    warp *= 0.45;
+    vec2 uvW = uv + warp;
+
     float ca = cos(u_branchAngle), sa = sin(u_branchAngle);
-    vec2  uvR = vec2(ca * uv.x - sa * uv.y, sa * uv.x + ca * uv.y);
-    vec2  br  = vec2(uvR.x * 1.0, uvR.y * 5.0);
-    float bn = vnoise(br * 1.6 + 13.7) * 0.6
-             + vnoise(br * 3.3 - 4.2)  * 0.4;
-    float branch = smoothstep(u_branchThresh, u_branchThresh + 0.16, bn);
+    vec2  uvR = vec2(ca * uvW.x - sa * uvW.y,
+                     sa * uvW.x + ca * uvW.y);
+
+    // Strong anisotropy along the rotated axis
+    vec2  br1 = vec2(uvR.x * 1.0,
+                     uvR.y * 6.0);
+    vec2  br2 = vec2(uvR.x * 0.65 + uvR.y * 0.10,
+                     uvR.y * 3.5  - uvR.x * 0.05);
+    float bnA = vnoise(br1 * 1.7 + 13.7);
+    float bnB = vnoise(br2 * 2.2 -  4.2);
+    // Multiplying two ~[0,1] noises gives a sparse [0,1] field
+    // (means rare bright peaks). Boost slightly for headroom.
+    float bn = bnA * bnB * 1.8;
+
+    // Per-position width variation (taper)
+    float widthMod = vnoise(uvR * vec2(0.35, 1.8) + 7.7) - 0.5;
+    float thresh   = u_branchThresh + widthMod * 0.12;
+
+    float branch = smoothstep(thresh, thresh + 0.14, bn);
     vec3  branchColor = vec3(0.075, 0.045, 0.022);
     col = mix(col, branchColor, branch * u_branchAmount);
 
