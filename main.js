@@ -93,8 +93,23 @@ function saveCachedUI() {
     } catch (e) {}
 }
 
+const TOGGLES = [
+    ['t_branchEnabled', 'branchEnabled']
+];
+
 function setupUI() {
     const cached = loadCachedUI();
+
+    TOGGLES.forEach(([id, key]) => {
+        const el = document.getElementById(id);
+        if (typeof cached[key] === 'boolean') el.checked = cached[key];
+        ui[key] = el.checked;
+        el.addEventListener('change', (e) => {
+            ui[key] = e.target.checked;
+            saveCachedUI();
+        });
+    });
+
     SLIDERS.forEach(([id, key, valId]) => {
         const el = document.getElementById(id);
         const valEl = document.getElementById(valId);
@@ -190,7 +205,12 @@ async function init() {
         gl.uniform2f(uniforms.resolution, gl.canvas.width, gl.canvas.height);
         gl.uniform1f(uniforms.time, baseTime);
         SLIDERS.forEach(([id, key]) => {
-            gl.uniform1f(uniforms[key], ui[key]);
+            let v = ui[key];
+            // Toggle gates: branchEnabled forces branch-related uniforms to 0
+            if (!ui.branchEnabled && (key === 'branchAmount' || key === 'branchOcclude')) {
+                v = 0;
+            }
+            gl.uniform1f(uniforms[key], v);
         });
 
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
