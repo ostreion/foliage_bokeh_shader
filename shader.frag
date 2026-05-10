@@ -76,16 +76,57 @@ vec2 windField(vec2 p, float t) {
     return vec2(n1, n2) - 0.5;
 }
 
-// ---------- Sun-radial tint ----------
-vec3 bokehTint(vec2 uv, vec2 sunPos) {
+// ---------- Unified scene field ----------
+// Returns the local color of the canopy at uv. Used to:
+//   1. paint the background, and
+//   2. tint each bokeh disk by sampling at the disk's centre.
+// Disk and background therefore share one palette so the bokeh
+// looks like brighter samples of the scene, not sprites on top.
+//
+// Composed of:
+//   - low-freq green variation (forest dark <-> sunlit lime)
+//   - radial gold halo around the sun (warmth-driven)
+//   - elongated dark-brown branch streaks (anisotropic noise)
+//   - sparse pale bluish-green sky-peek hot spots
+//
+// One fbm + two vnoise calls; cheap enough to evaluate per disk.
+vec3 sceneColor(vec2 uv, vec2 sunPos) {
+    // Slow temporal evolution so the canopy "breathes" with the wind
+    float tt = u_time * 0.04 * u_windSpeed;
+
+    // Base green variation
+    float n1 = fbm(uv * 1.5 + vec2(tt, tt * 0.6));
+    float greenMix = smoothstep(0.30, 0.78, n1);
+    vec3  darkGreen   = vec3(0.04, 0.075, 0.025);
+    vec3  sunnyGreen  = vec3(0.48, 0.66, 0.18);
+    vec3  col = mix(darkGreen, sunnyGreen, greenMix);
+
+    // Sun proximity gold tint (also used downstream)
     float d = length(uv - sunPos);
-    // Warmth re-scales perceived distance to the sun.
-    // warmth = 0   -> distances feel ~2x farther -> mostly green
-    // warmth = 0.5 -> natural radial gradient
-    // warmth = 1   -> distances feel ~0.4x -> mostly gold everywhere
-    float k = mix(2.0, 0.4, u_warmth);
-    float g = smoothstep(0.15, 0.95, d * k);
-    return mix(C_GOLD_BOK, C_GREEN_BOK, g);
+    float k = mix(2.2, 0.45, u_warmth);
+    float sunMix = 1.0 - smoothstep(0.10, 1.0, d * k);
+    col = mix(col, C_GOLD_BOK, sunMix * 0.85);
+
+    // Elongated branch streaks: stretch coords along a diagonal,
+    // then threshold a noise sample to get thin dark patches.
+    vec2 br;
+    br.x = uv.x * 0.55 + uv.y * 0.95;
+    br.y = uv.y * 5.0 - uv.x * 0.35;
+    float bn = vnoise(br * 1.6 + 13.7) * 0.6
+             + vnoise(br * 3.3 - 4.2) * 0.4;
+    float branch = smoothstep(0.62, 0.78, bn);
+    vec3  branchColor = vec3(0.075, 0.045, 0.022);
+    col = mix(col, branchColor, branch * 0.65);
+
+    // Sparse sky-peek: pale, slightly cool. Warmer near the sun.
+    float sn = vnoise(uv * 4.0 + vec2(0.0, tt * 0.5));
+    float sky = smoothstep(0.78, 0.90, sn) * (1.0 - branch);
+    vec3  skyCool = vec3(0.55, 0.68, 0.55);
+    vec3  skyWarm = vec3(0.85, 0.78, 0.50);
+    vec3  skyColor = mix(skyCool, skyWarm, sunMix * 0.7);
+    col = mix(col, skyColor, sky * 0.75);
+
+    return col;
 }
 
 // ---------- Bokeh layer ----------
@@ -149,9 +190,11 @@ vec3 bokehLayer(
                       - smoothstep(rad * 0.7, rad * 0.35, dist);
             rim = max(rim, 0.0) * 0.35 * u_sharpness;
 
-            // Per-circle world-space UV for tinting
+            // Per-circle world-space UV for tinting.
+            // Disk samples the SAME scene field that paints the background,
+            // so the bokeh inherits local branch / sky-peek / sun tint.
             vec2 cellUV = (cell + r) / gridScale;
-            vec3 tint = bokehTint(cellUV, sunPos);
+            vec3 tint = sceneColor(cellUV, sunPos);
 
             acc += (disk + rim) * gap * tint * brightness;
         }
@@ -159,21 +202,10 @@ vec3 bokehLayer(
     return acc;
 }
 
-// Background canopy: dark green with a warm halo around the sun
+// Background canopy: a dimmed sample of the same scene field.
+// Disks and background therefore share one palette.
 vec3 background(vec2 uv, vec2 sunPos) {
-    // Slow, structural mottling
-    float n = fbm(uv * 1.6 + vec2(u_time * 0.02 * u_windSpeed, 0.0)) * 0.5
-            + fbm(uv * 4.0 - vec2(0.0, u_time * 0.015 * u_windSpeed)) * 0.5;
-    n = mix(0.55, 1.0, n);
-
-    vec3 base = mix(C_SHADOW, C_DEEP_LEAF, n);
-
-    // Warm halo from offscreen sun
-    float d = length(uv - sunPos);
-    float halo = exp(-d * 1.6);
-    base += C_SKY_WARM * halo * 0.55;
-
-    return base;
+    return sceneColor(uv, sunPos) * 0.42;
 }
 
 // ACES Filmic tone mapping
@@ -199,11 +231,13 @@ void main() {
 
     // Single bokeh layer at one characteristic disk size.
     // Disk size variance (+/- ~6%) is now per-cell inside bokehLayer.
+    // Disks are brighter samples of the same scene field, so they
+    // act as concentrated highlights of the local canopy color.
     vec3 fg = bokehLayer(
         uv,
         6.5 * u_zoom,
         0.78,
-        0.55,
+        1.35,
         sunPos
     );
     col += fg;
