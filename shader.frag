@@ -16,6 +16,7 @@ uniform float u_timeScale;
 const vec3 C_SKY = vec3(0.23, 0.29, 0.36); // Muted blue-grey sky
 const vec3 C_BRANCH = vec3(0.10, 0.07, 0.05); // Deep dark warm brown
 const vec3 C_DEEP_LEAF = vec3(0.08, 0.12, 0.06); // Dark green
+const vec3 C_MID_LEAF = vec3(0.15, 0.22, 0.08); // Medium green
 const vec3 C_SUN_LEAF = vec3(0.35, 0.38, 0.15); // Muted olive/gold
 const vec3 C_BOKEH_CORE = vec3(0.90, 0.79, 0.51); // Creamy gold
 const vec3 C_SUN_GLOW = vec3(1.0, 0.95, 0.85); // Soft white
@@ -139,11 +140,11 @@ vec3 renderBokehLayer(vec2 uv, float baseGridScale, float layerDepth, float dens
 // ACES Filmic Tone Mapping Curve
 // https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/
 vec3 ACESFilm(vec3 x) {
-    float a = 2.51f;
-    float b = 0.03f;
-    float c = 2.43f;
-    float d = 0.59f;
-    float e = 0.14f;
+    float a = 2.51;
+    float b = 0.03;
+    float c = 2.43;
+    float d = 0.59;
+    float e = 0.14;
     return clamp((x*(a*x+b))/(x*(c*x+d)+e), 0.0, 1.0);
 }
 
