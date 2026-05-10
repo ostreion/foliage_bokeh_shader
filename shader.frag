@@ -6,24 +6,40 @@ uniform vec2  u_resolution;
 uniform float u_time;
 
 // Layout / camera
-uniform float u_zoom;          // overall scale of the scene
-uniform float u_density;       // gap threshold (more = brighter, more gaps)
-uniform float u_sharpness;     // 0 = soft cream, 1 = crisp disk
-uniform float u_warmth;        // 0 = uniform gold, 1 = strong green->gold gradient
-uniform float u_exposure;      // pre tone-map gain
-uniform float u_saturation;    // post saturation
-uniform float u_vignette;      // vignette strength
+uniform float u_zoom;
+uniform float u_density;
+uniform float u_sharpness;
+uniform float u_diskSize;        // bokeh disk radius (cell units)
+uniform float u_sizeVar;         // +/- variance fraction
+uniform float u_diskBrightness;
+uniform float u_bgMix;           // background dim factor
+
+// Scene field
+uniform float u_branchAmount;
+uniform float u_branchThresh;
+uniform float u_branchAngle;     // radians, rotation of branch streaks
+uniform float u_skyAmount;
+uniform float u_skyThresh;
+uniform float u_greenScale;      // freq scale of base green variation
+
+// Color / post
+uniform float u_warmth;
+uniform float u_exposure;
+uniform float u_saturation;
+uniform float u_vignette;
 
 // Wind / flicker
-uniform float u_windSpeed;     // overall time scale for wind & flicker
-uniform float u_windAmp;       // how much circles drift
-uniform float u_flickerDepth;  // 0 = no twinkle, 1 = full close-off
-uniform float u_flickerSpeed;  // twinkle rate
+uniform float u_windSpeed;
+uniform float u_windAmp;
+uniform float u_flickerDepth;
+uniform float u_flickerSpeed;
 
 // Sun
 uniform float u_sunX;
 uniform float u_sunY;
 uniform float u_sunSize;
+uniform float u_sunBloom;        // halo strength
+uniform float u_sunReach;        // bloom falloff (smaller = wider)
 uniform float u_rayIntensity;
 
 // ---------- Palette ----------
@@ -95,7 +111,7 @@ vec3 sceneColor(vec2 uv, vec2 sunPos) {
     float tt = u_time * 0.04 * u_windSpeed;
 
     // Base green variation
-    float n1 = fbm(uv * 1.5 + vec2(tt, tt * 0.6));
+    float n1 = fbm(uv * u_greenScale + vec2(tt, tt * 0.6));
     float greenMix = smoothstep(0.30, 0.78, n1);
     vec3  darkGreen   = vec3(0.04, 0.075, 0.025);
     vec3  sunnyGreen  = vec3(0.48, 0.66, 0.18);
@@ -107,24 +123,24 @@ vec3 sceneColor(vec2 uv, vec2 sunPos) {
     float sunMix = 1.0 - smoothstep(0.10, 1.0, d * k);
     col = mix(col, C_GOLD_BOK, sunMix * 0.85);
 
-    // Elongated branch streaks: stretch coords along a diagonal,
-    // then threshold a noise sample to get thin dark patches.
-    vec2 br;
-    br.x = uv.x * 0.55 + uv.y * 0.95;
-    br.y = uv.y * 5.0 - uv.x * 0.35;
+    // Elongated branch streaks: rotate, then anisotropically stretch
+    // (5x along one axis), then threshold a noise sample.
+    float ca = cos(u_branchAngle), sa = sin(u_branchAngle);
+    vec2  uvR = vec2(ca * uv.x - sa * uv.y, sa * uv.x + ca * uv.y);
+    vec2  br  = vec2(uvR.x * 1.0, uvR.y * 5.0);
     float bn = vnoise(br * 1.6 + 13.7) * 0.6
-             + vnoise(br * 3.3 - 4.2) * 0.4;
-    float branch = smoothstep(0.62, 0.78, bn);
+             + vnoise(br * 3.3 - 4.2)  * 0.4;
+    float branch = smoothstep(u_branchThresh, u_branchThresh + 0.16, bn);
     vec3  branchColor = vec3(0.075, 0.045, 0.022);
-    col = mix(col, branchColor, branch * 0.65);
+    col = mix(col, branchColor, branch * u_branchAmount);
 
     // Sparse sky-peek: pale, slightly cool. Warmer near the sun.
     float sn = vnoise(uv * 4.0 + vec2(0.0, tt * 0.5));
-    float sky = smoothstep(0.78, 0.90, sn) * (1.0 - branch);
+    float sky = smoothstep(u_skyThresh, u_skyThresh + 0.12, sn) * (1.0 - branch);
     vec3  skyCool = vec3(0.55, 0.68, 0.55);
     vec3  skyWarm = vec3(0.85, 0.78, 0.50);
     vec3  skyColor = mix(skyCool, skyWarm, sunMix * 0.7);
-    col = mix(col, skyColor, sky * 0.75);
+    col = mix(col, skyColor, sky * u_skyAmount);
 
     return col;
 }
@@ -162,9 +178,8 @@ vec3 bokehLayer(
             vec2 diff = pos - f_st;
             float dist = length(diff);
 
-            // Per-cell radius variance: roughly +/- 6% around the base.
-            // hash12 -> [0,1] -> [-1,1] * 0.06
-            float rJitter = (hash12(cell + 7.31) - 0.5) * 0.12;
+            // Per-cell radius variance, controlled by u_sizeVar (full range).
+            float rJitter = (hash12(cell + 7.31) - 0.5) * u_sizeVar;
             float rad = radius * (1.0 + rJitter);
 
             if (dist > rad * 1.05) continue;
@@ -205,7 +220,7 @@ vec3 bokehLayer(
 // Background canopy: a dimmed sample of the same scene field.
 // Disks and background therefore share one palette.
 vec3 background(vec2 uv, vec2 sunPos) {
-    return sceneColor(uv, sunPos) * 0.42;
+    return sceneColor(uv, sunPos) * u_bgMix;
 }
 
 // ACES Filmic tone mapping
@@ -230,14 +245,14 @@ void main() {
     vec3 col = background(uv, sunPos);
 
     // Single bokeh layer at one characteristic disk size.
-    // Disk size variance (+/- ~6%) is now per-cell inside bokehLayer.
+    // Disk size variance is now per-cell inside bokehLayer.
     // Disks are brighter samples of the same scene field, so they
     // act as concentrated highlights of the local canopy color.
     vec3 fg = bokehLayer(
         uv,
         6.5 * u_zoom,
-        0.78,
-        1.35,
+        u_diskSize,
+        u_diskBrightness,
         sunPos
     );
     col += fg;
@@ -245,8 +260,8 @@ void main() {
     // 4. Minimal background sun: just a soft warm bloom on the right.
     //    Kept additive but low-amplitude so ACES doesn't blow it out.
     float sunDist = length(uv - sunPos);
-    float bloom   = exp(-sunDist * (1.6 / max(u_sunSize, 0.05)));
-    col += C_SUN_CORE * bloom * 0.55;
+    float bloom   = exp(-sunDist * (u_sunReach / max(u_sunSize, 0.05)));
+    col += C_SUN_CORE * bloom * u_sunBloom;
 
     // Tiny crisp core only when sun is on-screen
     float core = smoothstep(u_sunSize * 0.20, 0.0, sunDist);

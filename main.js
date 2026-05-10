@@ -45,21 +45,33 @@ function initShaderProgram(gl, vsSource, fsSource) {
 
 // Slider id -> { uiKey, valId }
 const SLIDERS = [
-    ['u_zoom',          'zoom',          'val-zoom'],
-    ['u_density',       'density',       'val-density'],
-    ['u_sharpness',     'sharpness',     'val-sharpness'],
-    ['u_windSpeed',     'windSpeed',     'val-windSpeed'],
-    ['u_windAmp',       'windAmp',       'val-windAmp'],
-    ['u_flickerDepth',  'flickerDepth',  'val-flickerDepth'],
-    ['u_flickerSpeed',  'flickerSpeed',  'val-flickerSpeed'],
-    ['u_warmth',        'warmth',        'val-warmth'],
-    ['u_exposure',      'exposure',      'val-exposure'],
-    ['u_saturation',    'saturation',    'val-saturation'],
-    ['u_vignette',      'vignette',      'val-vignette'],
-    ['u_sunX',          'sunX',          'val-sunX'],
-    ['u_sunY',          'sunY',          'val-sunY'],
-    ['u_sunSize',       'sunSize',       'val-sunSize'],
-    ['u_rayIntensity',  'rayIntensity',  'val-rayIntensity']
+    ['u_zoom',           'zoom',           'val-zoom'],
+    ['u_density',        'density',        'val-density'],
+    ['u_sharpness',      'sharpness',      'val-sharpness'],
+    ['u_diskSize',       'diskSize',       'val-diskSize'],
+    ['u_sizeVar',        'sizeVar',        'val-sizeVar'],
+    ['u_diskBrightness', 'diskBrightness', 'val-diskBrightness'],
+    ['u_bgMix',          'bgMix',          'val-bgMix'],
+    ['u_branchAmount',   'branchAmount',   'val-branchAmount'],
+    ['u_branchThresh',   'branchThresh',   'val-branchThresh'],
+    ['u_branchAngle',    'branchAngle',    'val-branchAngle'],
+    ['u_skyAmount',      'skyAmount',      'val-skyAmount'],
+    ['u_skyThresh',      'skyThresh',      'val-skyThresh'],
+    ['u_greenScale',     'greenScale',     'val-greenScale'],
+    ['u_windSpeed',      'windSpeed',      'val-windSpeed'],
+    ['u_windAmp',        'windAmp',        'val-windAmp'],
+    ['u_flickerDepth',   'flickerDepth',   'val-flickerDepth'],
+    ['u_flickerSpeed',   'flickerSpeed',   'val-flickerSpeed'],
+    ['u_warmth',         'warmth',         'val-warmth'],
+    ['u_exposure',       'exposure',       'val-exposure'],
+    ['u_saturation',     'saturation',     'val-saturation'],
+    ['u_vignette',       'vignette',       'val-vignette'],
+    ['u_sunX',           'sunX',           'val-sunX'],
+    ['u_sunY',           'sunY',           'val-sunY'],
+    ['u_sunSize',        'sunSize',        'val-sunSize'],
+    ['u_sunBloom',       'sunBloom',       'val-sunBloom'],
+    ['u_sunReach',       'sunReach',       'val-sunReach'],
+    ['u_rayIntensity',   'rayIntensity',   'val-rayIntensity']
 ];
 
 const ui = {};
