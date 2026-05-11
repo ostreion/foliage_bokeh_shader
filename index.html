@@ -12,9 +12,19 @@
         // could apply.
         (function () {
             var KEY = 'foliage-bokeh-ui-v1';
-            var isMobile = matchMedia('(pointer: coarse)').matches
-                        || (navigator.maxTouchPoints || 0) > 0
-                        || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+            // Phone detection (NOT tablet). iPads and Android tablets
+            // get the desktop preset since they have more screen
+            // real estate and capable GPUs. Phones use the touchier
+            // mobile preset.
+            //   - iPhone/iPod UA → phone
+            //   - Android with "Mobile" in UA → phone (tablets omit it)
+            //   - Touch device + narrow viewport → phone fallback
+            var ua = navigator.userAgent;
+            var hasTouch = matchMedia('(pointer: coarse)').matches
+                        || (navigator.maxTouchPoints || 0) > 0;
+            var isMobile = /iPhone|iPod/.test(ua)
+                        || (/Android/.test(ua) && /Mobile/.test(ua))
+                        || (hasTouch && Math.min(window.innerWidth, window.innerHeight) < 768);
             var MOBILE = {
                 branchEnabled: true,
                 zoom: 1.05, density: 0.30, sharpness: 0.56,

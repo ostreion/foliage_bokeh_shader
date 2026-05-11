@@ -95,12 +95,16 @@ const SLIDERS = [
 const ui = {};
 const STORAGE_KEY = 'foliage-bokeh-ui-v1';
 
-// Mobile detection for dprCap and perf defaults. Mobile-tuned slider
-// preset is seeded into localStorage by the inline script in index.html
-// before this file loads, so loadCachedUI just reads it normally.
-const IS_MOBILE = matchMedia('(pointer: coarse)').matches
-               || (navigator.maxTouchPoints || 0) > 0
-               || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+// Phone detection (not tablet) for dprCap and perf defaults. Tablets
+// get desktop-class perf settings since they have more capable GPUs.
+// Slider presets are seeded into localStorage by the head script in
+// index.html before this file loads, so loadCachedUI just reads them.
+const _ua = navigator.userAgent;
+const _hasTouch = matchMedia('(pointer: coarse)').matches
+               || (navigator.maxTouchPoints || 0) > 0;
+const IS_MOBILE = /iPhone|iPod/.test(_ua)
+               || (/Android/.test(_ua) && /Mobile/.test(_ua))
+               || (_hasTouch && Math.min(window.innerWidth, window.innerHeight) < 768);
 
 function loadCachedUI() {
     try {
