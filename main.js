@@ -80,6 +80,7 @@ const SLIDERS = [
     ['u_grainAmount',    'grainAmount',    'val-grainAmount'],
     ['u_grainSize',      'grainSize',      'val-grainSize'],
     ['u_grainColor',     'grainColor',     'val-grainColor'],
+    ['u_mute',           'mute',           'val-mute'],
     ['u_sunX',           'sunX',           'val-sunX'],
     ['u_sunY',           'sunY',           'val-sunY'],
     ['u_sunSize',        'sunSize',        'val-sunSize'],

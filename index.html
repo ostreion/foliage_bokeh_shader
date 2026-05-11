@@ -38,6 +38,11 @@
         #ui-panel:hover {
             background: rgba(15, 20, 15, 0.88);
         }
+        @media (pointer: coarse), (max-width: 640px) {
+            #ui-panel { background: rgba(15, 20, 15, 0.30); }
+            #ui-panel:hover { background: rgba(15, 20, 15, 0.45); }
+            #playpause { background: rgba(15, 20, 15, 0.30); }
+        }
         #ui-panel.collapsed {
             width: auto;
             padding: 8px 12px;
@@ -337,6 +342,10 @@
         <div class="control-group">
             <div class="control-header"><span>Grain Color</span><span id="val-grainColor">0.30</span></div>
             <input type="range" id="u_grainColor" min="0.0" max="1.0" step="0.02" value="0.30">
+        </div>
+        <div class="control-group">
+            <div class="control-header"><span>Mute (Background Mode)</span><span id="val-mute">0.00</span></div>
+            <input type="range" id="u_mute" min="0.0" max="1.0" step="0.02" value="0.00">
         </div>
 
         <div class="section-title">Sun</div>

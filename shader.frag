@@ -43,6 +43,7 @@ uniform float u_vignette;
 uniform float u_grainAmount;     // film grain intensity
 uniform float u_grainSize;       // grain pixel scale (>=1)
 uniform float u_grainColor;      // 0 = mono luma grain, 1 = full RGB chroma jitter
+uniform float u_mute;            // 0 = full intensity, 1 = recede into background
 
 // Wind / flicker
 uniform float u_windSpeed;
@@ -479,6 +480,15 @@ void main() {
     float vd = length(frag - 0.5);
     float v = 1.0 - smoothstep(0.30, 0.85, vd);
     col *= mix(1.0 - u_vignette, 1.0, v);
+
+    // Mute: pull the final image toward a dark forest tone and drop
+    // saturation. Single slider for "fade into background mode" -
+    // good for using this shader behind text content.
+    if (u_mute > 0.0001) {
+        float lumaM = dot(col, vec3(0.2126, 0.7152, 0.0722));
+        col = mix(col, vec3(lumaM), u_mute * 0.55);
+        col = mix(col, vec3(0.02, 0.035, 0.018), u_mute * 0.65);
+    }
 
     // Gamma
     col = pow(max(col, 0.0), vec3(1.0 / 2.2));
