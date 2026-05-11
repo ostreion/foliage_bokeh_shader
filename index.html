@@ -67,6 +67,9 @@
                 rayIntensity: 0.65, rayCount: 30
             };
             var D = isMobile ? MOBILE : DESKTOP;
+            // Expose to main.js so the "Load Defaults" button can
+            // re-apply the device-appropriate preset on demand.
+            window.__BOKEH_PRESET__ = D;
             var existing = {};
             try { existing = JSON.parse(localStorage.getItem(KEY) || '{}'); }
             catch (e) {}
@@ -265,6 +268,7 @@
         <div id="ui-actions">
             <button class="ui-btn" id="btn-copy">Copy Settings</button>
             <button class="ui-btn" id="btn-paste">Paste Settings</button>
+            <button class="ui-btn" id="btn-defaults">Load Defaults</button>
         </div>
         <div class="section-title">Layout</div>
         <div class="control-group">

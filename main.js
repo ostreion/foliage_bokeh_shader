@@ -298,6 +298,14 @@ async function init() {
         return true;
     }
 
+    document.getElementById('btn-defaults').addEventListener('click', () => {
+        const btn = document.getElementById('btn-defaults');
+        const preset = window.__BOKEH_PRESET__;
+        if (!preset) { flashBtn(btn, 'err', 'No preset'); return; }
+        if (applyPreset({ ui: preset })) flashBtn(btn, 'ok', 'Loaded');
+        else flashBtn(btn, 'err', 'Failed');
+    });
+
     document.getElementById('btn-paste').addEventListener('click', async () => {
         const btn = document.getElementById('btn-paste');
         let txt = '';
