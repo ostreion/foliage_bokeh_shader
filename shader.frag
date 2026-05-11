@@ -87,10 +87,15 @@ float vnoise(vec2 st) {
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
+// 3-octave fbm. Fourth octave contributes amplitude 0.0625 at ~8x
+// the base frequency; at this shader's sample scales that is finer
+// than the bokeh defocus kernel, so dropping it is not resolvable.
+// Called per-pixel for the green field, per-cell (25x) for twinkle,
+// and once for the sun-ray mask.
 float fbm(vec2 p) {
     float v = 0.0;
     float a = 0.5;
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 3; i++) {
         v += a * vnoise(p);
         p *= 2.02;
         a *= 0.5;
