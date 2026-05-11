@@ -168,6 +168,17 @@ function detectGpuTier(gl) {
     return 'med';
 }
 
+// Reflect a programmatic ui[key] change into the slider / value
+// display so dev-mode UI stays in sync with API-driven changes. No-op
+// when sliders aren't in the DOM (embed.html production build).
+function reflectSlider(key, value) {
+    const id = 'u_' + key;
+    const el = document.getElementById(id);
+    if (el) el.value = String(value);
+    const valEl = document.getElementById('val-' + key);
+    if (valEl && typeof value === 'number') valEl.innerText = value.toFixed(2);
+}
+
 function applyTierDemotions(tier) {
     const order = ['high', 'med', 'low'];
     const demote = (t) => order[Math.min(order.indexOf(t) + 1, order.length - 1)];
@@ -270,6 +281,61 @@ async function init() {
     let baseTime = 0;
     let lastNow = 0;
 
+    // ---- External control API ----
+    // Lets a parent page (e.g. the hero iframe-embedder) drive any
+    // shader uniform from scroll position. Two equivalent surfaces:
+    //
+    //   1) postMessage (recommended for scroll-driven updates):
+    //        iframe.contentWindow.postMessage(
+    //          { type: 'bokeh', mute: 0.6, sharpness: 0.3 }, '*');
+    //
+    //   2) URL hash (good for static configs or quick testing):
+    //        embed.html#mute=0.6&sharpness=0.3
+    //      The parent can also drive this at runtime via
+    //      `iframe.src = 'embed.html#mute=' + v` — cross-origin fragment
+    //      changes are permitted and fire hashchange in the iframe.
+    //
+    // Common keys for hero integration: mute (0..1, moody fade),
+    // sharpness (0..1, defocus), exposure, vignette, bgMix, windAmp,
+    // rayIntensity. Any key listed in SLIDERS is controllable; values
+    // are clamped to the slider's min/max if a slider is in the DOM.
+    const _CONTROLLABLE = new Set(SLIDERS.map(([_, k]) => k));
+    function applyExternalUpdate(updates) {
+        let touched = false;
+        for (const key in updates) {
+            if (!_CONTROLLABLE.has(key)) continue;
+            let v = +updates[key];
+            if (!isFinite(v)) continue;
+            const el = document.getElementById('u_' + key);
+            if (el) {
+                const min = parseFloat(el.min), max = parseFloat(el.max);
+                if (isFinite(min) && isFinite(max)) v = Math.max(min, Math.min(max, v));
+            }
+            ui[key] = v;
+            reflectSlider(key, v);
+            touched = true;
+        }
+        if (touched) saveCachedUI();
+    }
+    window.addEventListener('message', (e) => {
+        const d = e.data;
+        if (d && d.type === 'bokeh') applyExternalUpdate(d);
+    });
+    function applyHashParams() {
+        const h = location.hash.replace(/^#/, '');
+        if (!h) return;
+        const out = {};
+        for (const [k, v] of new URLSearchParams(h)) out[k] = v;
+        applyExternalUpdate(out);
+    }
+    applyHashParams();
+    window.addEventListener('hashchange', applyHashParams);
+    // Notify the parent that the shader is ready to receive updates,
+    // so it doesn't have to guess. No-op for top-level loads.
+    if (window.parent && window.parent !== window) {
+        try { window.parent.postMessage({ type: 'bokeh-ready' }, '*'); } catch (_) {}
+    }
+
     // GPU tier sets the perf ceilings (renderScale, dprCap, maxFps).
     // Detected once from WEBGL_debug_renderer_info, then demoted on
     // Save-Data / weak network / low deviceMemory.
@@ -282,13 +348,6 @@ async function init() {
     // startup. Sliders (if present) reflect the clamped value so the
     // UI is honest. Users can still drag higher than the cap in dev
     // mode — the adaptive governor (next commit) will pull it back.
-    function reflectSlider(key, value) {
-        const id = 'u_' + key;
-        const el = document.getElementById(id);
-        if (el) el.value = String(value);
-        const valEl = document.getElementById('val-' + key);
-        if (valEl) valEl.innerText = (typeof value === 'number' ? value : 0).toFixed(2);
-    }
     if (typeof ui.renderScale === 'number' && ui.renderScale > caps.renderScale) {
         ui.renderScale = caps.renderScale;
         reflectSlider('renderScale', ui.renderScale);
@@ -554,6 +613,12 @@ async function init() {
     };
     function governorTick(intervalMs, targetMs, nowMs) {
         if (gov.warmup > 0) { gov.warmup--; return; }
+        // Discard spurious intervals — typically the first frame after
+        // a visibility / IntersectionObserver pause, where rAF was
+        // throttled to ~1Hz so the measured gap is huge but not a
+        // GPU bottleneck. A real 60fps→20fps drop is still within 5x
+        // of target, so this cut-off is safe.
+        if (intervalMs > targetMs * 5) return;
         gov.ema = 0.90 * gov.ema + 0.10 * intervalMs;
         // Need to clearly miss the target by 35% to count as bottleneck.
         // At target=16.67ms that's ema > 22.5ms — i.e. we're hitting
@@ -584,7 +649,13 @@ async function init() {
 
     let lastFrameMs = 0;
     function render(now) {
-        if (!visible || !tabActive || !playing) return;
+        if (!visible || !tabActive || !playing) {
+            // Loop terminating; the next entry should treat itself as
+            // a fresh start so the governor doesn't see the pause gap
+            // as a real frame interval.
+            lastFrameMs = 0;
+            return;
+        }
 
         // FPS cap. requestAnimationFrame keeps ticking at display
         // rate; we skip work between intervals when capped below 60.
