@@ -95,6 +95,13 @@ const SLIDERS = [
 const ui = {};
 const STORAGE_KEY = 'foliage-bokeh-ui-v1';
 
+// Mobile detection for dprCap and perf defaults. Mobile-tuned slider
+// preset is seeded into localStorage by the inline script in index.html
+// before this file loads, so loadCachedUI just reads it normally.
+const IS_MOBILE = matchMedia('(pointer: coarse)').matches
+               || (navigator.maxTouchPoints || 0) > 0
+               || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
 function loadCachedUI() {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -193,9 +200,7 @@ async function init() {
 
     // Device-aware defaults. The Render Scale and Max FPS sliders
     // override these; DPR cap stays automatic.
-    const isMobile = matchMedia('(pointer: coarse)').matches
-                  || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-    const dprCap = isMobile ? 1.25 : 1.5;
+    const dprCap = IS_MOBILE ? 1.25 : 1.5;
 
     // Set sane mobile-aware defaults on the perf sliders if the user
     // hasn't already tuned them via the cached UI.
@@ -205,7 +210,7 @@ async function init() {
         if (!rsEl || !fpsEl) return;
         const cached = (() => { try { return JSON.parse(localStorage.getItem('foliage-bokeh-ui-v1') || '{}'); } catch (_) { return {}; } })();
         if (typeof cached.renderScale !== 'number') {
-            rsEl.value = isMobile ? '0.55' : '0.75';
+            rsEl.value = IS_MOBILE ? '0.55' : '0.75';
             rsEl.dispatchEvent(new Event('input'));
         }
         if (typeof cached.maxFps !== 'number') {
@@ -363,6 +368,30 @@ async function init() {
     canvas.addEventListener('mousedown', (e) => startDrag(e.clientX, e.clientY));
     window.addEventListener('mousemove', (e) => moveDrag(e.clientX, e.clientY));
     window.addEventListener('mouseup',   endDrag);
+
+    // Trackpad two-finger scroll / mouse wheel. The signs below are
+    // chosen so a "natural scroll" macOS trackpad swipe in any
+    // direction makes the scene follow the gesture, matching touch.
+    // Browsers normalise pinch-zoom into wheel events with ctrlKey
+    // set: we swallow those too so the page doesn't zoom.
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const h = Math.max(rect.height, 1);
+        // deltaMode: 0=pixel, 1=line, 2=page. Normalize lines to
+        // a sensible pixel-ish step.
+        const k = e.deltaMode === 0 ? 1.0
+                : e.deltaMode === 1 ? 16.0
+                : rect.height;
+        const sx = -e.deltaX * k / h;
+        const sy =  e.deltaY * k / h;
+        pan.x += sx;
+        pan.y += sy;
+        // Light inertia so a flick keeps drifting briefly after the
+        // gesture ends.
+        vel.x = sx * 8;
+        vel.y = sy * 8;
+    }, { passive: false });
 
     function updatePan(dt) {
         if (!dragging) {
