@@ -81,6 +81,8 @@ const SLIDERS = [
     ['u_grainSize',      'grainSize',      'val-grainSize'],
     ['u_grainColor',     'grainColor',     'val-grainColor'],
     ['u_mute',           'mute',           'val-mute'],
+    ['u_renderScale',    'renderScale',    'val-renderScale'],
+    ['u_maxFps',         'maxFps',         'val-maxFps'],
     ['u_sunX',           'sunX',           'val-sunX'],
     ['u_sunY',           'sunY',           'val-sunY'],
     ['u_sunSize',        'sunSize',        'val-sunSize'],
@@ -170,7 +172,8 @@ async function init() {
 
     const uniforms = {
         resolution: gl.getUniformLocation(program, 'u_resolution'),
-        time:       gl.getUniformLocation(program, 'u_time')
+        time:       gl.getUniformLocation(program, 'u_time'),
+        pan:        gl.getUniformLocation(program, 'u_pan')
     };
     SLIDERS.forEach(([id, key]) => {
         uniforms[key] = gl.getUniformLocation(program, id);
@@ -188,14 +191,28 @@ async function init() {
     let baseTime = 0;
     let lastNow = 0;
 
-    // Device-aware quality. Mobile/touch devices get a lower internal
-    // resolution; desktop pushes higher. DPR is capped so retina
-    // displays don't render at 2x and tank perf - a slight upscale
-    // through CSS is invisible on this kind of soft, blurry imagery.
+    // Device-aware defaults. The Render Scale and Max FPS sliders
+    // override these; DPR cap stays automatic.
     const isMobile = matchMedia('(pointer: coarse)').matches
                   || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-    const baseQuality = isMobile ? 0.55 : 0.75;
-    const dprCap      = isMobile ? 1.25 : 1.5;
+    const dprCap = isMobile ? 1.25 : 1.5;
+
+    // Set sane mobile-aware defaults on the perf sliders if the user
+    // hasn't already tuned them via the cached UI.
+    (function presetPerfDefaults() {
+        const rsEl = document.getElementById('u_renderScale');
+        const fpsEl = document.getElementById('u_maxFps');
+        if (!rsEl || !fpsEl) return;
+        const cached = (() => { try { return JSON.parse(localStorage.getItem('foliage-bokeh-ui-v1') || '{}'); } catch (_) { return {}; } })();
+        if (typeof cached.renderScale !== 'number') {
+            rsEl.value = isMobile ? '0.55' : '0.75';
+            rsEl.dispatchEvent(new Event('input'));
+        }
+        if (typeof cached.maxFps !== 'number') {
+            fpsEl.value = '60';
+            fpsEl.dispatchEvent(new Event('input'));
+        }
+    })();
 
     // Pause render loop when canvas is off-screen or tab is hidden.
     // Saves battery / GPU when the shader is in a section the user
@@ -287,6 +304,84 @@ async function init() {
         }
     });
 
+    // ---- Touch / mouse pan with inertia + rubber-band bounds ----
+    // u_pan is in uv-space; one unit ≈ canvas height. Keep bounds
+    // small so the user can wander a little, not get lost.
+    const pan      = { x: 0, y: 0 };
+    const vel      = { x: 0, y: 0 };
+    const PAN_MAX  = 0.45;
+    const FRICTION = 3.5;   // per second
+    const SPRING   = 6.0;   // pull toward 0 when over bounds
+    let dragging   = false;
+    let lastTouch  = { x: 0, y: 0, t: 0 };
+
+    function clientToUv(cx, cy) {
+        const rect = canvas.getBoundingClientRect();
+        const aspect = rect.width / rect.height;
+        return {
+            x: (cx / rect.height) * 1.0,
+            y: -(cy / rect.height) * 1.0,
+            aspect
+        };
+    }
+
+    function startDrag(cx, cy) {
+        dragging = true;
+        const u = clientToUv(cx, cy);
+        lastTouch = { x: u.x, y: u.y, t: performance.now() };
+        vel.x = 0; vel.y = 0;
+    }
+    function moveDrag(cx, cy) {
+        if (!dragging) return;
+        const u = clientToUv(cx, cy);
+        const t = performance.now();
+        const dx = u.x - lastTouch.x;
+        const dy = u.y - lastTouch.y;
+        const dt = Math.max((t - lastTouch.t) / 1000, 1e-3);
+        // Rubber-band: scale down delta when already past the bound.
+        const stretch = Math.max(Math.abs(pan.x), Math.abs(pan.y)) / PAN_MAX;
+        const damp = stretch > 1 ? 1 / (1 + (stretch - 1) * 3) : 1;
+        pan.x += dx * damp;
+        pan.y += dy * damp;
+        vel.x = dx / dt;
+        vel.y = dy / dt;
+        lastTouch = { x: u.x, y: u.y, t };
+    }
+    function endDrag() {
+        dragging = false;
+    }
+
+    canvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        startDrag(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: true });
+    canvas.addEventListener('touchmove', (e) => {
+        if (e.touches.length !== 1) return;
+        moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: true });
+    canvas.addEventListener('touchend',   endDrag, { passive: true });
+    canvas.addEventListener('touchcancel', endDrag, { passive: true });
+    // Mouse drag too, for desktop testing
+    canvas.addEventListener('mousedown', (e) => startDrag(e.clientX, e.clientY));
+    window.addEventListener('mousemove', (e) => moveDrag(e.clientX, e.clientY));
+    window.addEventListener('mouseup',   endDrag);
+
+    function updatePan(dt) {
+        if (!dragging) {
+            // Inertia
+            pan.x += vel.x * dt;
+            pan.y += vel.y * dt;
+            const fr = Math.exp(-FRICTION * dt);
+            vel.x *= fr;
+            vel.y *= fr;
+            // Spring back to bounds
+            const overX = Math.max(0, Math.abs(pan.x) - PAN_MAX) * Math.sign(pan.x);
+            const overY = Math.max(0, Math.abs(pan.y) - PAN_MAX) * Math.sign(pan.y);
+            if (overX !== 0) { vel.x -= SPRING * overX * dt; }
+            if (overY !== 0) { vel.y -= SPRING * overY * dt; }
+        }
+    }
+
     document.addEventListener('visibilitychange', () => {
         tabActive = !document.hidden;
         if (tabActive && visible) requestAnimationFrame(render);
@@ -304,25 +399,37 @@ async function init() {
         io.observe(canvas);
     }
 
+    let lastFrameMs = 0;
     function render(now) {
         if (!visible || !tabActive || !playing) return;
 
-        now *= 0.001;
-        let dt = now - lastNow;
+        // FPS cap. requestAnimationFrame keeps ticking at display
+        // rate; we skip work between intervals when capped below 60.
+        const maxFps   = Math.max(1, Math.min(120, ui.maxFps || 60));
+        const interval = 1000 / maxFps;
+        if (now - lastFrameMs < interval - 1) {
+            requestAnimationFrame(render);
+            return;
+        }
+        lastFrameMs = now;
+
+        const nowS = now * 0.001;
+        let dt = nowS - lastNow;
         if (dt > 0.1) dt = 0.016;
-        lastNow = now;
+        lastNow = nowS;
         baseTime += dt;
 
-        // Render only what's actually shown. canvas.clientWidth/Height
-        // are CSS pixels - the shader runs at this size * quality *
-        // capped DPR, regardless of how the page is laid out. So a
-        // small canvas on iPhone renders few pixels even though the
-        // shader is identical to desktop.
+        // Touch-driven pan: apply inertia and rubber-band toward 0.
+        updatePan(dt);
+
+        // Render scale is user-controlled. Internal resolution =
+        // canvas CSS size * renderScale * capped DPR.
+        const renderScale = Math.max(0.2, Math.min(2.0, ui.renderScale || 0.75));
         const dpr     = Math.min(window.devicePixelRatio || 1, dprCap);
         const dispW   = canvas.clientWidth;
         const dispH   = canvas.clientHeight;
-        const targetW = Math.max(1, Math.floor(dispW * baseQuality * dpr));
-        const targetH = Math.max(1, Math.floor(dispH * baseQuality * dpr));
+        const targetW = Math.max(1, Math.floor(dispW * renderScale * dpr));
+        const targetH = Math.max(1, Math.floor(dispH * renderScale * dpr));
         if (canvas.width !== targetW || canvas.height !== targetH) {
             canvas.width = targetW;
             canvas.height = targetH;
@@ -339,6 +446,7 @@ async function init() {
 
         gl.uniform2f(uniforms.resolution, gl.canvas.width, gl.canvas.height);
         gl.uniform1f(uniforms.time, baseTime);
+        gl.uniform2f(uniforms.pan, pan.x, pan.y);
         SLIDERS.forEach(([id, key]) => {
             let v = ui[key];
             // Toggle gates: branchEnabled forces branch-related uniforms to 0

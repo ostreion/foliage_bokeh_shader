@@ -4,6 +4,7 @@ precision highp float;
 
 uniform vec2  u_resolution;
 uniform float u_time;
+uniform vec2  u_pan;             // touch/drag offset, parallaxed across layers
 
 // Layout / camera
 uniform float u_zoom;
@@ -299,7 +300,11 @@ vec3 bokehLayer(
             // 2) bodyRamp: radial opacity gradient — translucent at
             //    the centre, full at the edge. Matches how an
             //    out-of-focus light pools pigment toward the rim.
-            float blurAmt = mix(rad * 0.6, 0.04, u_sharpness);
+            // Extended defocus range: at sharpness=0 the blur band
+            // now spans well past `rad`, so the disk fully melts into
+            // a soft wash - useful for background mode where you want
+            // the bokeh to read as colour fields rather than circles.
+            float blurAmt = mix(rad * 1.6, 0.04, u_sharpness);
             float bodyEdge = smoothstep(rad + blurAmt * 0.5,
                                         rad - blurAmt * 0.5, dist);
             float t = clamp(dist / max(rad, 1e-4), 0.0, 1.0);
@@ -387,8 +392,14 @@ void main() {
     float aspect = u_resolution.x / u_resolution.y;
     vec2 sunPos = vec2(u_sunX * aspect, u_sunY);
 
+    // Pan with parallax. Bokeh moves at full pan amplitude; the
+    // background canopy at a lower factor, so swiping creates a
+    // light depth effect rather than a flat scroll.
+    vec2 uvBokeh = uv + u_pan;
+    vec2 uvBg    = uv + u_pan * 0.55;
+
     // 1. Background canopy
-    vec3 col = background(uv, sunPos);
+    vec3 col = background(uvBg, sunPos);
 
     // Single bokeh layer. Disks sample sceneColor at their cell
     // centre, so cells whose centre lands on branch matter come
@@ -396,10 +407,10 @@ void main() {
     // bokeh as occasional dark streaks of brown disks.
     // Branch Occlusion can additionally cut disk brightness in
     // the same area for a more silhouetted look (default 0).
-    float bm = branchField(uv);
+    float bm = branchField(uvBokeh);
     float branchOcclude = bm * u_branchAmount * u_branchOcclude;
     vec3 fg = bokehLayer(
-        uv,
+        uvBokeh,
         6.5 * u_zoom,
         u_diskSize,
         u_diskBrightness,
@@ -470,6 +481,20 @@ void main() {
 
     // ---------- Post ----------
     col *= u_exposure;
+
+    // Mute (pre-tonemap): darken globally, deepen shadows, lift
+    // contrast around a low pivot, and reduce saturation modestly.
+    // Doing this before ACES means shadows actually crush instead of
+    // being lifted toward grey, so the canvas reads as a moody
+    // background rather than a faded version of itself.
+    if (u_mute > 0.0001) {
+        col *= mix(1.0, 0.32, u_mute);
+        float pivot = 0.06;
+        col = (col - pivot) * mix(1.0, 1.55, u_mute) + pivot;
+        float lumaM = dot(col, vec3(0.2126, 0.7152, 0.0722));
+        col = mix(col, vec3(lumaM), u_mute * 0.35);
+    }
+
     col = ACESFilm(col);
 
     // Saturation around tone-mapped luma
@@ -480,15 +505,6 @@ void main() {
     float vd = length(frag - 0.5);
     float v = 1.0 - smoothstep(0.30, 0.85, vd);
     col *= mix(1.0 - u_vignette, 1.0, v);
-
-    // Mute: pull the final image toward a dark forest tone and drop
-    // saturation. Single slider for "fade into background mode" -
-    // good for using this shader behind text content.
-    if (u_mute > 0.0001) {
-        float lumaM = dot(col, vec3(0.2126, 0.7152, 0.0722));
-        col = mix(col, vec3(lumaM), u_mute * 0.55);
-        col = mix(col, vec3(0.02, 0.035, 0.018), u_mute * 0.65);
-    }
 
     // Gamma
     col = pow(max(col, 0.0), vec3(1.0 / 2.2));
