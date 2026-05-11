@@ -98,11 +98,19 @@ float fbm(vec2 p) {
     return v;
 }
 
-// 2D wind field: smooth, low-frequency, slowly evolving
+// 2D wind field: smooth, low-frequency, slowly evolving.
+// Drift is sub-cell, so the exact noise structure is never resolved
+// by the eye. Two sin/cos pairs at incommensurate frequencies give
+// a smooth, non-repeating-looking field at a fraction of the cost
+// of the previous fbm-based version (windField is called 25x per
+// pixel in the bokeh loop plus once for the sun rays).
+// Output is bounded to roughly ±0.5 per axis, matching the original.
 vec2 windField(vec2 p, float t) {
-    float n1 = fbm(p * 0.7 + vec2(t * 0.12, 0.0));
-    float n2 = fbm(p * 0.7 + vec2(11.3, t * 0.10));
-    return vec2(n1, n2) - 0.5;
+    float n1 = sin(p.x * 0.62 + t * 0.12)
+             + 0.5 * sin(p.y * 1.07 - t * 0.07);
+    float n2 = cos(p.y * 0.58 - t * 0.10)
+             + 0.5 * cos(p.x * 1.13 + t * 0.08);
+    return vec2(n1, n2) * 0.333;
 }
 
 // ---------- Unified scene field ----------
