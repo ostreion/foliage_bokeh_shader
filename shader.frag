@@ -290,10 +290,20 @@ vec3 bokehLayer(
             float rimAmt       = mix(0.85, 1.35, hRim) * u_rimStrength;
             float innerOpacity = mix(0.18, 0.45, hInner) * u_innerOpacity;
 
-            // Soft body. No speckle - clean wash.
-            float blurAmt = mix(rad * 0.9, 0.04, u_sharpness);
-            float bodyShape = smoothstep(rad, rad - blurAmt, dist);
-            float disk = bodyShape * innerOpacity;
+            // Soft body. Two-part construction:
+            // 1) bodyEdge: a symmetric soft cutoff straddling `rad`,
+            //    so the dense interior reaches all the way to the
+            //    rim band (no low-opacity gap between body and rim).
+            //    u_sharpness controls how soft that boundary is.
+            // 2) bodyRamp: radial opacity gradient — translucent at
+            //    the centre, full at the edge. Matches how an
+            //    out-of-focus light pools pigment toward the rim.
+            float blurAmt = mix(rad * 0.6, 0.04, u_sharpness);
+            float bodyEdge = smoothstep(rad + blurAmt * 0.5,
+                                        rad - blurAmt * 0.5, dist);
+            float t = clamp(dist / max(rad, 1e-4), 0.0, 1.0);
+            float bodyRamp = mix(0.25, 1.0, pow(t, 1.4));
+            float disk = bodyEdge * bodyRamp * innerOpacity;
 
             // Per-cell rim presence: only some disks get a rim. Hash
             // gates it; soft-thresholded so the chance slider feels
