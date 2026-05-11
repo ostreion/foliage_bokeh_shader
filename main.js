@@ -214,6 +214,78 @@ async function init() {
         if (playing && visible && tabActive) requestAnimationFrame(render);
     });
     syncPlayPause();
+
+    // Copy / Paste current settings as JSON. Useful for tuning the
+    // shader on one device and porting the tuned values to another.
+    const PRESET_VERSION = 1;
+
+    function flashBtn(btn, cls, label) {
+        const orig = btn.textContent;
+        btn.textContent = label;
+        btn.classList.add(cls);
+        setTimeout(() => {
+            btn.textContent = orig;
+            btn.classList.remove(cls);
+        }, 1200);
+    }
+
+    document.getElementById('btn-copy').addEventListener('click', async () => {
+        const preset = { version: PRESET_VERSION, ui: { ...ui } };
+        const txt = JSON.stringify(preset, null, 2);
+        const btn = document.getElementById('btn-copy');
+        try {
+            await navigator.clipboard.writeText(txt);
+            flashBtn(btn, 'ok', 'Copied');
+        } catch (_) {
+            const ta = document.createElement('textarea');
+            ta.value = txt;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); flashBtn(btn, 'ok', 'Copied'); }
+            catch (__) { flashBtn(btn, 'err', 'Copy failed'); }
+            document.body.removeChild(ta);
+        }
+    });
+
+    function applyPreset(preset) {
+        if (!preset || typeof preset !== 'object' || !preset.ui) return false;
+        const next = preset.ui;
+        for (const [id, key] of SLIDERS) {
+            if (typeof next[key] !== 'number' || !isFinite(next[key])) continue;
+            const el = document.getElementById(id);
+            if (!el) continue;
+            const min = parseFloat(el.min), max = parseFloat(el.max);
+            const v = Math.max(min, Math.min(max, next[key]));
+            el.value = String(v);
+            el.dispatchEvent(new Event('input'));
+        }
+        for (const [id, key] of TOGGLES) {
+            if (typeof next[key] !== 'boolean') continue;
+            const el = document.getElementById(id);
+            if (!el) continue;
+            el.checked = next[key];
+            el.dispatchEvent(new Event('change'));
+        }
+        return true;
+    }
+
+    document.getElementById('btn-paste').addEventListener('click', async () => {
+        const btn = document.getElementById('btn-paste');
+        let txt = '';
+        try { txt = await navigator.clipboard.readText(); }
+        catch (_) { txt = window.prompt('Paste settings JSON:') || ''; }
+        if (!txt.trim()) return;
+        try {
+            const preset = JSON.parse(txt);
+            if (applyPreset(preset)) flashBtn(btn, 'ok', 'Applied');
+            else flashBtn(btn, 'err', 'Bad format');
+        } catch (_) {
+            flashBtn(btn, 'err', 'Bad JSON');
+        }
+    });
+
     document.addEventListener('visibilitychange', () => {
         tabActive = !document.hidden;
         if (tabActive && visible) requestAnimationFrame(render);

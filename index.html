@@ -63,6 +63,29 @@
             transition: transform 0.2s;
         }
         #ui-panel.collapsed #ui-toggle { transform: rotate(-90deg); }
+        #ui-actions {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+        .ui-btn {
+            flex: 1;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.10);
+            color: #ddd;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 5px 6px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background 0.15s;
+        }
+        .ui-btn:hover { background: rgba(255,255,255,0.12); }
+        .ui-btn:active { background: rgba(255,255,255,0.18); }
+        .ui-btn.ok { background: rgba(80, 160, 90, 0.35); border-color: rgba(120, 200, 130, 0.4); }
+        .ui-btn.err { background: rgba(180, 70, 70, 0.35); border-color: rgba(220, 110, 110, 0.4); }
         #playpause {
             position: absolute;
             top: 16px;
@@ -158,6 +181,10 @@
             <span id="ui-toggle">▾</span>
         </div>
         <div id="ui-body">
+        <div id="ui-actions">
+            <button class="ui-btn" id="btn-copy">Copy Settings</button>
+            <button class="ui-btn" id="btn-paste">Paste Settings</button>
+        </div>
         <div class="section-title">Layout</div>
         <div class="control-group">
             <div class="control-header"><span>Zoom</span><span id="val-zoom">1.0</span></div>

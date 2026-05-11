@@ -436,6 +436,20 @@ void main() {
                    * sin(ang * u_rayCount * 1.85 - u_time * 0.03 * u_windSpeed);
         rays = smoothstep(0.85, 1.0, rays);
 
+        // Per-ray independent sparkle. Bucket the angle by ray index,
+        // hash for stable per-ray phase + frequency, modulate the
+        // spike's intensity with its own slow sine. Each spoke now
+        // pulses on its own clock instead of the whole sunburst
+        // rising and falling together.
+        float bucket  = floor(ang * u_rayCount * 0.15915494 + 0.5);
+        float hPhase  = hash12(vec2(bucket, 17.3));
+        float hFreq   = hash12(vec2(bucket, 31.7));
+        float twF     = 0.6 + hFreq * 1.8;
+        float twinkle = 0.35
+                      + 0.65 * (0.5 + 0.5 * sin(u_time * twF
+                                              + hPhase * 6.2831));
+        rays *= twinkle;
+
         // Mask drift inherits the wind direction so the "sprinkle"
         // travels with the leaves rather than along a fixed axis.
         vec2  drift   = vec2(u_time * 0.05 * u_windSpeed, 0.0) + wSun * 0.6;
