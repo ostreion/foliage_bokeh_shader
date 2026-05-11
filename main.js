@@ -184,26 +184,12 @@ async function init() {
     let baseTime = 0;
     let lastNow = 0;
 
-    // Device-aware defaults. The Render Scale and Max FPS sliders
-    // override these; DPR cap stays automatic.
-    const dprCap = IS_MOBILE ? 1.25 : 1.5;
-
-    // Set sane mobile-aware defaults on the perf sliders if the user
-    // hasn't already tuned them via the cached UI.
-    (function presetPerfDefaults() {
-        const rsEl = document.getElementById('u_renderScale');
-        const fpsEl = document.getElementById('u_maxFps');
-        if (!rsEl || !fpsEl) return;
-        const cached = (() => { try { return JSON.parse(localStorage.getItem('foliage-bokeh-ui-v1') || '{}'); } catch (_) { return {}; } })();
-        if (typeof cached.renderScale !== 'number') {
-            rsEl.value = IS_MOBILE ? '0.55' : '0.75';
-            rsEl.dispatchEvent(new Event('input'));
-        }
-        if (typeof cached.maxFps !== 'number') {
-            fpsEl.value = '60';
-            fpsEl.dispatchEvent(new Event('input'));
-        }
-    })();
+    // Unified DPR cap. Previously phones used 1.25 which (combined
+    // with renderScale 0.55 and native DPR 3) put iPhone backing
+    // store at ~23% of physical screen pixels — visibly grainy/soft
+    // compared to Mac. 1.5 across the board, combined with the
+    // CSS-space grain fix below, brings phone fidelity in line.
+    const dprCap = 1.5;
 
     // Pause render loop when canvas is off-screen or tab is hidden.
     // Saves battery / GPU when the shader is in a section the user
@@ -462,8 +448,17 @@ async function init() {
         gl.uniform2f(uniforms.resolution, gl.canvas.width, gl.canvas.height);
         gl.uniform1f(uniforms.time, baseTime);
         gl.uniform2f(uniforms.pan, pan.x, pan.y);
+        // Grain texel size is authored in CSS-space (e.g. "1.5 CSS px
+        // per grain cell"). The shader reads gl_FragCoord, which is in
+        // backing-store pixels, so we pre-multiply by the backing-to-CSS
+        // ratio. That ratio is exactly renderScale * dpr. Result: grain
+        // looks the same physical size on iPhone (low backing) and Mac
+        // (high backing) instead of bigger-on-the-smaller-canvas.
+        const backingPerCss = renderScale * dpr;
         SLIDERS.forEach(([id, key]) => {
-            gl.uniform1f(uniforms[key], ui[key]);
+            let v = ui[key];
+            if (key === 'grainSize') v = Math.max(1.0, v * backingPerCss);
+            gl.uniform1f(uniforms[key], v);
         });
 
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

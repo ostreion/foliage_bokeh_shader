@@ -56,7 +56,11 @@
             var TABLET = Object.assign({}, DESKTOP, { renderScale: 0.70 });
             // Mobile preset inherits the desktop look; only the
             // internal render scale differs so phones stay smooth.
-            var MOBILE = Object.assign({}, DESKTOP, { renderScale: 0.55 });
+            // Bumped from 0.55 to 0.70 now that the dpr cap is unified
+            // at 1.5 across all device classes; grain is also scaled
+            // in CSS-space in main.js so the visual texture matches
+            // desktop instead of looking ~5x larger.
+            var MOBILE = Object.assign({}, DESKTOP, { renderScale: 0.70 });
             var D = isPhone ? MOBILE : (isTablet ? TABLET : DESKTOP);
             // Expose to main.js so the "Load Defaults" button can
             // re-apply the device-appropriate preset on demand.
