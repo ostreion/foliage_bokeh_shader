@@ -63,6 +63,29 @@
             transition: transform 0.2s;
         }
         #ui-panel.collapsed #ui-toggle { transform: rotate(-90deg); }
+        #playpause {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 20, 15, 0.72);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 50%;
+            color: #eee;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            user-select: none;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            transition: background 0.2s;
+        }
+        #playpause:hover { background: rgba(15, 20, 15, 0.88); }
         .section-title {
             font-size: 10px;
             text-transform: uppercase;
@@ -126,6 +149,8 @@
 </head>
 <body>
     <canvas id="glcanvas"></canvas>
+
+    <div id="playpause" title="Pause animation">⏸</div>
 
     <div id="ui-panel">
         <div id="ui-header">

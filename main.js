@@ -201,6 +201,19 @@ async function init() {
     // has scrolled past or another tab is in front.
     let visible = true;
     let tabActive = !document.hidden;
+    let playing = true;
+
+    const ppBtn = document.getElementById('playpause');
+    function syncPlayPause() {
+        ppBtn.textContent = playing ? '⏸' : '▶';
+        ppBtn.title = playing ? 'Pause animation' : 'Play animation';
+    }
+    ppBtn.addEventListener('click', () => {
+        playing = !playing;
+        syncPlayPause();
+        if (playing && visible && tabActive) requestAnimationFrame(render);
+    });
+    syncPlayPause();
     document.addEventListener('visibilitychange', () => {
         tabActive = !document.hidden;
         if (tabActive && visible) requestAnimationFrame(render);
@@ -219,7 +232,7 @@ async function init() {
     }
 
     function render(now) {
-        if (!visible || !tabActive) return;
+        if (!visible || !tabActive || !playing) return;
 
         now *= 0.001;
         let dt = now - lastNow;
