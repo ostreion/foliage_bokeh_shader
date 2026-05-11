@@ -16,12 +16,6 @@ uniform float u_diskBrightness;
 uniform float u_bgMix;           // background dim factor
 
 // Scene field
-uniform float u_branchAmount;
-uniform float u_branchThresh;
-uniform float u_branchAngle;     // radians, rotation of branch streaks
-uniform float u_branchWidth;     // 0 = thin, 1 = thick limbs
-uniform float u_branchOcclude;   // how much branches block bokeh (0..1)
-uniform float u_leafCover;       // foreground-leaf irregularity (0..1)
 uniform float u_skyAmount;
 uniform float u_skyThresh;
 uniform float u_greenScale;      // freq scale of base green variation
@@ -111,49 +105,6 @@ vec2 windField(vec2 p, float t) {
     return vec2(n1, n2) - 0.5;
 }
 
-// ---------- Branch field ----------
-// Branches are just another color contribution to the scene
-// (dark warm-brown matter), like green leaves or sky peeks.
-// Rare, but when they occur they're long: high anisotropy in the
-// branch direction, high threshold so coverage stays around 5-10%.
-// u_branchWidth controls cross-section thickness, u_leafCover
-// adds high-freq irregularity so the streaks fragment naturally.
-float branchField(vec2 uv) {
-    float ca = cos(u_branchAngle), sa = sin(u_branchAngle);
-    vec2  uvR0 = vec2(ca * uv.x - sa * uv.y,
-                      sa * uv.x + ca * uv.y);
-
-    vec2 wobble = vec2(vnoise(uvR0 * 0.5 + 5.1),
-                       vnoise(uvR0 * 0.5 - 3.3)) - 0.5;
-    vec2 uvR = uvR0 + wobble * 0.45;
-
-    // High aniso (branches are LONG) - the perpendicular stretch
-    // is large so noise peaks form thin elongated ridges.
-    float aniso = mix(14.0, 5.0, u_branchWidth);
-
-    vec2 br1 = vec2(uvR.x * 0.55,                uvR.y * aniso);
-    vec2 br2 = vec2(uvR.x * 0.40 + uvR.y * 0.10, uvR.y * aniso * 0.55);
-    float bnA = vnoise(br1 * 0.9 + 13.7);
-    float bnB = vnoise(br2 * 1.1 -  4.2);
-    float bn  = bnA * bnB * 1.85;
-
-    float widthMod = vnoise(uvR * vec2(0.22, 0.9) + 7.7) - 0.5;
-    float thresh   = u_branchThresh + widthMod * 0.10;
-
-    float branch = smoothstep(thresh, thresh + 0.10, bn);
-
-    // Leaf irregularity: high-freq noise breaks up the streak so
-    // a single branch fragments into multiple discontinuous dark
-    // patches. Two octaves give both individual-leaf and clump
-    // scales.
-    float leaf = vnoise(uv * 18.0 + 2.3) * 0.55
-               + vnoise(uv *  9.0 - 5.1) * 0.45;
-    leaf = (leaf - 0.5) * u_leafCover * 0.7;
-    branch = clamp(branch - leaf, 0.0, 1.0);
-
-    return branch;
-}
-
 // ---------- Unified scene field ----------
 // Returns the local color of the canopy at uv. Used to:
 //   1. paint the background, and
@@ -164,7 +115,6 @@ float branchField(vec2 uv) {
 // Composed of:
 //   - low-freq green variation (forest dark <-> sunlit lime)
 //   - radial gold halo around the sun (warmth-driven)
-//   - elongated dark-brown branch streaks (anisotropic noise)
 //   - sparse pale bluish-green sky-peek hot spots
 //
 // One fbm + two vnoise calls; cheap enough to evaluate per disk.
@@ -190,23 +140,13 @@ vec3 sceneColor(vec2 uv, vec2 sunPos, bool includeSky) {
     float sunMix = 1.0 - smoothstep(0.10, 1.0, d * k);
     col = mix(col, C_GOLD_BOK, sunMix * 0.85);
 
-    // Branches: dark warm-brown matter mixed into the scene.
-    // Disks sampling sceneColor at a branch cell will come up as
-    // dark-brown smears, naturally reading as long thin streaks
-    // through the bokeh field instead of a separate silhouette
-    // layer painted on top.
-    float branch = branchField(uv);
-    vec3  branchColor = vec3(0.06, 0.038, 0.020);
-    col = mix(col, branchColor, branch * u_branchAmount);
-
     // Sparse sky-peek: pale, slightly cool. Warmer near the sun.
     // Only contributes when includeSky is true (i.e. for disk
     // tinting). The background pass skips this so sky shapes don't
     // leak through as a visible flat layer between disks.
     if (includeSky) {
         float sn = vnoise(uv * 4.0 + vec2(0.0, tt * 0.5));
-        float sky = smoothstep(u_skyThresh, u_skyThresh + 0.12, sn)
-                  * (1.0 - branch * u_branchAmount);
+        float sky = smoothstep(u_skyThresh, u_skyThresh + 0.12, sn);
         vec3  skyCool = vec3(0.55, 0.68, 0.55);
         vec3  skyWarm = vec3(0.85, 0.78, 0.50);
         vec3  skyColor = mix(skyCool, skyWarm, sunMix * 0.7);
@@ -366,7 +306,7 @@ vec3 bokehLayer(
 
             // Per-circle world-space UV for tinting.
             // Disk samples the SAME scene field that paints the background,
-            // so the bokeh inherits local branch / sky-peek / sun tint.
+            // so the bokeh inherits local sky-peek / sun tint.
             vec2 cellUV = (cell + r) / gridScale;
             vec3 tint = sceneColor(cellUV, sunPos, true);
 
@@ -411,13 +351,7 @@ void main() {
     vec3 col = background(uvBg, sunPos);
 
     // Single bokeh layer. Disks sample sceneColor at their cell
-    // centre, so cells whose centre lands on branch matter come
-    // out dark-brown - the branches naturally emerge through the
-    // bokeh as occasional dark streaks of brown disks.
-    // Branch Occlusion can additionally cut disk brightness in
-    // the same area for a more silhouetted look (default 0).
-    float bm = branchField(uvBokeh);
-    float branchOcclude = bm * u_branchAmount * u_branchOcclude;
+    // centre, inheriting local sky / sun tint.
     vec3 fg = bokehLayer(
         uvBokeh,
         6.5 * u_zoom,
@@ -425,7 +359,6 @@ void main() {
         u_diskBrightness,
         sunPos
     );
-    fg *= (1.0 - branchOcclude);
     col += fg;
 
     // 4. Minimal background sun: just a soft warm bloom on the right.

@@ -26,16 +26,13 @@
                         || (/Android/.test(ua) && /Mobile/.test(ua))
                         || (hasTouch && Math.min(window.innerWidth, window.innerHeight) < 768);
             var MOBILE = {
-                branchEnabled: true,
                 zoom: 1.05, density: 0.30, sharpness: 0.56,
                 diskSize: 1.02, sizeVar: 0.60, diskBrightness: 0.60,
                 bgMix: 0.42,
                 rimChance: 0.56, rimStrength: 1.00, rimThickness: 0.46,
                 rimCoverageMin: 0.20, rimCoverageMax: 0.90,
                 rimSpeckle: 0.90, rimSpeckleScale: 1.00, innerOpacity: 1.00,
-                branchAmount: 0.66, branchThresh: 0.55, branchAngle: 1.05,
-                branchWidth: 0.56, branchOcclude: 0.00,
-                leafCover: 0.66, skyAmount: 0.76, skyThresh: 0.78,
+                skyAmount: 0.76, skyThresh: 0.78,
                 greenScale: 1.50,
                 windSpeed: 1.00, windAmp: 0.36,
                 flickerDepth: 1.00, flickerSpeed: 1.00,
@@ -46,16 +43,13 @@
                 rayIntensity: 1.20, rayCount: 18
             };
             var DESKTOP = {
-                branchEnabled: false,
                 zoom: 1.45, density: 0.29, sharpness: 0.78,
                 diskSize: 0.90, sizeVar: 0.45, diskBrightness: 0.70,
                 bgMix: 0.76,
                 rimChance: 0.08, rimStrength: 0.05, rimThickness: 0.00,
                 rimCoverageMin: 0.08, rimCoverageMax: 0.90,
                 rimSpeckle: 0.75, rimSpeckleScale: 0.75, innerOpacity: 0.60,
-                branchAmount: 0.66, branchThresh: 0.55, branchAngle: 1.05,
-                branchWidth: 0.56, branchOcclude: 0.26,
-                leafCover: 0.84, skyAmount: 1.00, skyThresh: 0.78,
+                skyAmount: 1.00, skyThresh: 0.78,
                 greenScale: 2.95,
                 windSpeed: 0.45, windAmp: 0.78,
                 flickerDepth: 0.96, flickerSpeed: 2.00,
@@ -335,34 +329,6 @@
         </div>
 
         <div class="section-title">Scene</div>
-        <div class="toggle-row">
-            <span>Enable Branches</span>
-            <input type="checkbox" id="t_branchEnabled" checked>
-        </div>
-        <div class="control-group">
-            <div class="control-header"><span>Branch Amount</span><span id="val-branchAmount">0.65</span></div>
-            <input type="range" id="u_branchAmount" min="0.0" max="1.0" step="0.02" value="0.65">
-        </div>
-        <div class="control-group">
-            <div class="control-header"><span>Branch Threshold</span><span id="val-branchThresh">0.55</span></div>
-            <input type="range" id="u_branchThresh" min="0.20" max="0.85" step="0.01" value="0.55">
-        </div>
-        <div class="control-group">
-            <div class="control-header"><span>Branch Angle</span><span id="val-branchAngle">1.05</span></div>
-            <input type="range" id="u_branchAngle" min="0.0" max="3.14" step="0.05" value="1.05">
-        </div>
-        <div class="control-group">
-            <div class="control-header"><span>Branch Width</span><span id="val-branchWidth">0.55</span></div>
-            <input type="range" id="u_branchWidth" min="0.0" max="1.0" step="0.02" value="0.55">
-        </div>
-        <div class="control-group">
-            <div class="control-header"><span>Branch Occlusion</span><span id="val-branchOcclude">0.0</span></div>
-            <input type="range" id="u_branchOcclude" min="0.0" max="1.0" step="0.02" value="0.0">
-        </div>
-        <div class="control-group">
-            <div class="control-header"><span>Leaf Cover</span><span id="val-leafCover">0.65</span></div>
-            <input type="range" id="u_leafCover" min="0.0" max="1.5" step="0.02" value="0.65">
-        </div>
         <div class="control-group">
             <div class="control-header"><span>Sky Peek Amount</span><span id="val-skyAmount">0.75</span></div>
             <input type="range" id="u_skyAmount" min="0.0" max="1.0" step="0.02" value="0.75">

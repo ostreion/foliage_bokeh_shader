@@ -60,12 +60,6 @@ const SLIDERS = [
     ['u_rimSpeckle',      'rimSpeckle',      'val-rimSpeckle'],
     ['u_rimSpeckleScale', 'rimSpeckleScale', 'val-rimSpeckleScale'],
     ['u_innerOpacity',    'innerOpacity',    'val-innerOpacity'],
-    ['u_branchAmount',   'branchAmount',   'val-branchAmount'],
-    ['u_branchThresh',   'branchThresh',   'val-branchThresh'],
-    ['u_branchAngle',    'branchAngle',    'val-branchAngle'],
-    ['u_branchWidth',    'branchWidth',    'val-branchWidth'],
-    ['u_branchOcclude',  'branchOcclude',  'val-branchOcclude'],
-    ['u_leafCover',      'leafCover',      'val-leafCover'],
     ['u_skyAmount',      'skyAmount',      'val-skyAmount'],
     ['u_skyThresh',      'skyThresh',      'val-skyThresh'],
     ['u_greenScale',     'greenScale',     'val-greenScale'],
@@ -119,22 +113,10 @@ function saveCachedUI() {
     } catch (e) {}
 }
 
-const TOGGLES = [
-    ['t_branchEnabled', 'branchEnabled']
-];
+const TOGGLES = [];
 
 function setupUI() {
     const cached = loadCachedUI();
-
-    TOGGLES.forEach(([id, key]) => {
-        const el = document.getElementById(id);
-        if (typeof cached[key] === 'boolean') el.checked = cached[key];
-        ui[key] = el.checked;
-        el.addEventListener('change', (e) => {
-            ui[key] = e.target.checked;
-            saveCachedUI();
-        });
-    });
 
     SLIDERS.forEach(([id, key, valId]) => {
         const el = document.getElementById(id);
@@ -481,12 +463,7 @@ async function init() {
         gl.uniform1f(uniforms.time, baseTime);
         gl.uniform2f(uniforms.pan, pan.x, pan.y);
         SLIDERS.forEach(([id, key]) => {
-            let v = ui[key];
-            // Toggle gates: branchEnabled forces branch-related uniforms to 0
-            if (!ui.branchEnabled && (key === 'branchAmount' || key === 'branchOcclude')) {
-                v = 0;
-            }
-            gl.uniform1f(uniforms[key], v);
+            gl.uniform1f(uniforms[key], ui[key]);
         });
 
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
