@@ -194,7 +194,13 @@ vec3 sceneColor(vec2 uv, vec2 sunPos) {
 
     // Sparse sky-peek: pale, slightly cool. Warmer near the sun.
     float sn = vnoise(uv * 4.0 + vec2(0.0, tt * 0.5));
-    float sky = smoothstep(u_skyThresh, u_skyThresh + 0.12, sn) * (1.0 - branch);
+    // Gate the branch-suppression by u_branchAmount: when branches
+    // are off, sky-peek reverts to pure isotropic noise (soft blobs).
+    // Otherwise the anisotropic branch shape would carve crisp
+    // diagonal slits through the sky patches even with branches
+    // disabled.
+    float sky = smoothstep(u_skyThresh, u_skyThresh + 0.12, sn)
+              * (1.0 - branch * u_branchAmount);
     vec3  skyCool = vec3(0.55, 0.68, 0.55);
     vec3  skyWarm = vec3(0.85, 0.78, 0.50);
     vec3  skyColor = mix(skyCool, skyWarm, sunMix * 0.7);
