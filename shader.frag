@@ -392,11 +392,12 @@ void main() {
     float aspect = u_resolution.x / u_resolution.y;
     vec2 sunPos = vec2(u_sunX * aspect, u_sunY);
 
-    // Pan with parallax. Bokeh moves at full pan amplitude; the
-    // background canopy at a lower factor, so swiping creates a
-    // light depth effect rather than a flat scroll.
-    vec2 uvBokeh = uv + u_pan;
-    vec2 uvBg    = uv + u_pan * 0.55;
+    // Pan with parallax. Subtract so the scene follows the finger:
+    // swipe right -> world content shifts right -> we sample a uv
+    // that lies to the left of the previous view-point. Background
+    // canopy uses a smaller factor for a faint depth effect.
+    vec2 uvBokeh = uv - u_pan;
+    vec2 uvBg    = uv - u_pan * 0.55;
 
     // 1. Background canopy
     vec3 col = background(uvBg, sunPos);
@@ -421,7 +422,9 @@ void main() {
 
     // 4. Minimal background sun: just a soft warm bloom on the right.
     //    Kept additive but low-amplitude so ACES doesn't blow it out.
-    float sunDist = length(uv - sunPos);
+    //    Uses uvBokeh so the sun translates with the panned scene
+    //    rather than staying pinned to the screen.
+    float sunDist = length(uvBokeh - sunPos);
     float bloom   = exp(-sunDist * (u_sunReach / max(u_sunSize, 0.05)));
     col += C_SUN_CORE * bloom * u_sunBloom;
 
@@ -440,7 +443,7 @@ void main() {
         // Sway: rotate the whole sunburst by a small wind-driven
         // angle. Reads as the rays leaning with the canopy.
         float sway = wSun.x * 0.18;
-        float ang  = atan(uv.y - sunPos.y, uv.x - sunPos.x) + sway;
+        float ang  = atan(uvBokeh.y - sunPos.y, uvBokeh.x - sunPos.x) + sway;
 
         // Two sines at related freqs give a beat pattern whose
         // visible spike count tracks u_rayCount.
@@ -465,7 +468,7 @@ void main() {
         // Mask drift inherits the wind direction so the "sprinkle"
         // travels with the leaves rather than along a fixed axis.
         vec2  drift   = vec2(u_time * 0.05 * u_windSpeed, 0.0) + wSun * 0.6;
-        float rayMask = fbm(uv * 8.0 + drift);
+        float rayMask = fbm(uvBokeh * 8.0 + drift);
         rayMask = smoothstep(0.4, 0.7, rayMask);
 
         // Slow breath on amplitude: a low-freq sine plus a touch of
