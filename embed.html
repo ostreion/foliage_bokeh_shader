@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Foliage Bokeh</title>
+    <script>
+        // Same zero-flash device-tuned preset as index.html. Kept
+        // duplicated here so the production embed has no dependency
+        // on the playground page. Any preset change needs to be
+        // mirrored in both files.
+        (function () {
+            var KEY = 'foliage-bokeh-ui-v1';
+            var ua = navigator.userAgent;
+            var hasTouch = matchMedia('(pointer: coarse)').matches
+                        || (navigator.maxTouchPoints || 0) > 0;
+            var isPhone = /iPhone|iPod/.test(ua)
+                       || (/Android/.test(ua) && /Mobile/.test(ua))
+                       || (hasTouch && Math.min(window.innerWidth, window.innerHeight) < 768);
+            var isTablet = !isPhone && hasTouch;
+            var DESKTOP = {
+                zoom: 1.60, density: 0.29, sharpness: 0.78,
+                diskSize: 0.90, sizeVar: 0.45, diskBrightness: 0.70,
+                bgMix: 0.70,
+                rimChance: 0.08, rimStrength: 0.05, rimThickness: 0.00,
+                rimCoverageMin: 0.08, rimCoverageMax: 0.90,
+                rimSpeckle: 0.75, rimSpeckleScale: 0.75, innerOpacity: 0.60,
+                skyAmount: 1.00, skyThresh: 0.77,
+                greenScale: 3.15,
+                windSpeed: 0.45, windAmp: 0.78,
+                flickerDepth: 0.96, flickerSpeed: 2.00,
+                warmth: 0.48, exposure: 0.90, saturation: 1.15, vignette: 0.80,
+                grainAmount: 0.06, grainSize: 1.50, grainColor: 0.30,
+                mute: 0.00, renderScale: 1.00, maxFps: 60,
+                sunX: 0.91, sunY: 0.87, sunSize: 0.31,
+                sunBloom: 1.55, sunReach: 2.55,
+                rayIntensity: 0.65, rayCount: 30
+            };
+            var TABLET = Object.assign({}, DESKTOP, { renderScale: 0.70 });
+            var MOBILE = Object.assign({}, DESKTOP, { renderScale: 0.70 });
+            var D = isPhone ? MOBILE : (isTablet ? TABLET : DESKTOP);
+            window.__BOKEH_PRESET__ = D;
+            var existing = {};
+            try { existing = JSON.parse(localStorage.getItem(KEY) || '{}'); }
+            catch (e) {}
+            var changed = false;
+            for (var k in D) {
+                if (!(k in existing)) { existing[k] = D[k]; changed = true; }
+            }
+            if (changed) {
+                try { localStorage.setItem(KEY, JSON.stringify(existing)); }
+                catch (e) {}
+            }
+        })();
+    </script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a2014;
+            height: 100%;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+            pointer-events: none;
+        }
+        canvas.interactive {
+            pointer-events: auto;
+            cursor: grab;
+        }
+        canvas.interactive:active { cursor: grabbing; }
+        #interact-toggle {
+            position: absolute;
+            right: 16px;
+            bottom: 16px;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 20, 15, 0.45);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            border-radius: 50%;
+            color: #ccc;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            user-select: none;
+            opacity: 0.45;
+            transition: opacity 0.2s, background 0.2s, color 0.2s, border-color 0.2s;
+            pointer-events: auto;
+            z-index: 2;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        #interact-toggle:hover { opacity: 0.95; }
+        #interact-toggle.active {
+            opacity: 1.0;
+            background: rgba(220, 230, 200, 0.18);
+            border-color: rgba(220, 230, 200, 0.45);
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glcanvas"></canvas>
+    <div id="interact-toggle" title="Enable pan (currently disabled)" aria-label="Toggle pan">✥</div>
+    <script src="main.js"></script>
+</body>
+</html>

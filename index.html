@@ -83,13 +83,19 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            background-color: #000;
+            /* Avg canopy tone so the initial 100-300ms shader compile
+               doesn't flash pure black behind the canvas, and so the
+               WebGL-unavailable fallback (see main.js) blends in. */
+            background-color: #1a2014;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
         canvas {
             display: block;
             width: 100vw;
+            /* 100dvh follows the dynamic viewport (handles iOS Safari's
+               URL bar). 100vh fallback for browsers without dvh. */
             height: 100vh;
+            height: 100dvh;
             /* Off by default so the canvas never swallows page
                scroll / clicks when used as a hero background. The
                #interact-toggle pill flips it to `auto` on demand. */

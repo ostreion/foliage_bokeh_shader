@@ -2,8 +2,25 @@ const canvas = document.getElementById('glcanvas');
 const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
 
 if (!gl) {
-    alert('Unable to initialize WebGL. Your browser may not support it.');
+    // Graceful fallback: hide the canvas, paint the average canopy
+    // tone via body background so the embed still looks intentional
+    // instead of black-screening when WebGL is unavailable or
+    // disabled (corporate proxies, broken drivers, ancient browsers).
+    canvas.style.display = 'none';
+    document.body.style.background =
+        'linear-gradient(180deg, #2a3522 0%, #131a0e 100%)';
+    console.warn('[bokeh] WebGL unavailable; using static gradient fallback.');
 }
+
+// Honor OS-level reduced-motion preference. We still render one
+// frame so the colour palette is present, but freeze time so wind /
+// twinkle / rays don't animate. Live updates via media-query
+// listener in case the user toggles it.
+const _reducedMotionMql = matchMedia('(prefers-reduced-motion: reduce)');
+let REDUCED_MOTION = _reducedMotionMql.matches;
+_reducedMotionMql.addEventListener?.('change', (e) => {
+    REDUCED_MOTION = e.matches;
+});
 
 const vsSource = `
     attribute vec4 aVertexPosition;
@@ -169,10 +186,26 @@ const TOGGLES = [];
 
 function setupUI() {
     const cached = loadCachedUI();
+    // The zero-flash head script in {index,embed}.html exposes the
+    // device preset here; embed.html has no sliders, so this object
+    // is the only source of defaults when the cache is also empty.
+    const seeded = window.__BOKEH_PRESET__ || {};
 
     SLIDERS.forEach(([id, key, valId]) => {
         const el = document.getElementById(id);
         const valEl = document.getElementById(valId);
+        if (!el) {
+            // No slider in DOM (embed.html). Populate ui[key] from
+            // cache or seeded preset so the render loop has values.
+            if (typeof cached[key] === 'number' && isFinite(cached[key])) {
+                ui[key] = cached[key];
+            } else if (typeof seeded[key] === 'number' && isFinite(seeded[key])) {
+                ui[key] = seeded[key];
+            } else {
+                ui[key] = 0;
+            }
+            return;
+        }
         // Apply cached value if it parses and is within slider bounds
         if (typeof cached[key] === 'number' && isFinite(cached[key])) {
             const min = parseFloat(el.min), max = parseFloat(el.max);
@@ -180,11 +213,11 @@ function setupUI() {
             el.value = String(c);
         }
         ui[key] = parseFloat(el.value);
-        valEl.innerText = parseFloat(el.value).toFixed(2);
+        if (valEl) valEl.innerText = parseFloat(el.value).toFixed(2);
         el.addEventListener('input', (e) => {
             const v = parseFloat(e.target.value);
             ui[key] = v;
-            valEl.innerText = v.toFixed(2);
+            if (valEl) valEl.innerText = v.toFixed(2);
             saveCachedUI();
         });
     });
@@ -193,6 +226,7 @@ function setupUI() {
     SLIDERS.forEach(([id, key, valId]) => {
         const valEl = document.getElementById(valId);
         const el = document.getElementById(id);
+        if (!el || !valEl) return;
         valEl.style.cursor = 'pointer';
         valEl.title = 'Double-click to reset';
         valEl.addEventListener('dblclick', () => {
@@ -275,15 +309,18 @@ async function init() {
 
     const ppBtn = document.getElementById('playpause');
     function syncPlayPause() {
+        if (!ppBtn) return;
         ppBtn.textContent = playing ? '⏸' : '▶';
         ppBtn.title = playing ? 'Pause animation' : 'Play animation';
     }
-    ppBtn.addEventListener('click', () => {
-        playing = !playing;
+    if (ppBtn) {
+        ppBtn.addEventListener('click', () => {
+            playing = !playing;
+            syncPlayPause();
+            if (playing && visible && tabActive) requestAnimationFrame(render);
+        });
         syncPlayPause();
-        if (playing && visible && tabActive) requestAnimationFrame(render);
-    });
-    syncPlayPause();
+    }
 
     // Copy / Paste current settings as JSON. Useful for tuning the
     // shader on one device and porting the tuned values to another.
@@ -299,7 +336,8 @@ async function init() {
         }, 1200);
     }
 
-    document.getElementById('btn-copy').addEventListener('click', async () => {
+    const _btnCopy = document.getElementById('btn-copy');
+    if (_btnCopy) _btnCopy.addEventListener('click', async () => {
         const preset = { version: PRESET_VERSION, ui: { ...ui } };
         const txt = JSON.stringify(preset, null, 2);
         const btn = document.getElementById('btn-copy');
@@ -341,7 +379,8 @@ async function init() {
         return true;
     }
 
-    document.getElementById('btn-defaults').addEventListener('click', () => {
+    const _btnDefaults = document.getElementById('btn-defaults');
+    if (_btnDefaults) _btnDefaults.addEventListener('click', () => {
         const btn = document.getElementById('btn-defaults');
         const preset = window.__BOKEH_PRESET__;
         if (!preset) { flashBtn(btn, 'err', 'No preset'); return; }
@@ -349,7 +388,8 @@ async function init() {
         else flashBtn(btn, 'err', 'Failed');
     });
 
-    document.getElementById('btn-paste').addEventListener('click', async () => {
+    const _btnPaste = document.getElementById('btn-paste');
+    if (_btnPaste) _btnPaste.addEventListener('click', async () => {
         const btn = document.getElementById('btn-paste');
         let txt = '';
         try { txt = await navigator.clipboard.readText(); }
@@ -563,7 +603,9 @@ async function init() {
         let dt = nowS - lastNow;
         if (dt > 0.1) dt = 0.016;
         lastNow = nowS;
-        baseTime += dt;
+        // Freeze time under prefers-reduced-motion: still render so
+        // the palette is correct, but no wind / twinkle / ray motion.
+        if (!REDUCED_MOTION) baseTime += dt;
 
         // Touch-driven pan: apply inertia and rubber-band toward 0.
         updatePan(dt);
