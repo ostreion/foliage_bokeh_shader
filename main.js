@@ -309,9 +309,7 @@ async function init() {
     // small so the user can wander a little, not get lost.
     const pan      = { x: 0, y: 0 };
     const vel      = { x: 0, y: 0 };
-    const PAN_MAX  = 0.45;
-    const FRICTION = 3.5;   // per second
-    const SPRING   = 6.0;   // pull toward 0 when over bounds
+    const FRICTION = 3.5;   // per second — natural deceleration
     let dragging   = false;
     let lastTouch  = { x: 0, y: 0, t: 0 };
 
@@ -338,11 +336,11 @@ async function init() {
         const dx = u.x - lastTouch.x;
         const dy = u.y - lastTouch.y;
         const dt = Math.max((t - lastTouch.t) / 1000, 1e-3);
-        // Rubber-band: scale down delta when already past the bound.
-        const stretch = Math.max(Math.abs(pan.x), Math.abs(pan.y)) / PAN_MAX;
-        const damp = stretch > 1 ? 1 / (1 + (stretch - 1) * 3) : 1;
-        pan.x += dx * damp;
-        pan.y += dy * damp;
+        // Pan is unbounded — the shader is procedural so any uv is
+        // valid. Friction below stops the inertial drift naturally.
+        // Direction inversion happens in the shader (uv - u_pan).
+        pan.x += dx;
+        pan.y += dy;
         vel.x = dx / dt;
         vel.y = dy / dt;
         lastTouch = { x: u.x, y: u.y, t };
@@ -368,17 +366,11 @@ async function init() {
 
     function updatePan(dt) {
         if (!dragging) {
-            // Inertia
             pan.x += vel.x * dt;
             pan.y += vel.y * dt;
             const fr = Math.exp(-FRICTION * dt);
             vel.x *= fr;
             vel.y *= fr;
-            // Spring back to bounds
-            const overX = Math.max(0, Math.abs(pan.x) - PAN_MAX) * Math.sign(pan.x);
-            const overY = Math.max(0, Math.abs(pan.y) - PAN_MAX) * Math.sign(pan.y);
-            if (overX !== 0) { vel.x -= SPRING * overX * dt; }
-            if (overY !== 0) { vel.y -= SPRING * overY * dt; }
         }
     }
 

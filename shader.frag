@@ -272,7 +272,15 @@ vec3 bokehLayer(
             diffR.y *= 1.0 - stretch;
             float dist = length(diffR);
 
-            if (dist > rad * 1.15) continue;
+            // Blur-aware skip threshold. With heavy defocus the body
+            // feathers well past `rad`, so a fixed 1.15*rad cap would
+            // hard-clip the soft edge and visually re-focus the disk.
+            // Use the larger of body reach (rad + blurAmt*0.5) and
+            // rim reach (rad + rad*0.18), plus a small margin.
+            float bodyReach = rad + max(0.0, mix(rad * 1.6, 0.04, u_sharpness)) * 0.5;
+            float rimReach  = rad * 1.18;
+            float maxReach  = max(bodyReach, rimReach) + rad * 0.04;
+            if (dist > maxReach) continue;
 
             // Twinkle: sample FBM at (cell, time). Smooth domain so no popping.
             float ph = r.x * 6.2831;
