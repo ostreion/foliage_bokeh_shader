@@ -475,6 +475,51 @@ async function init() {
         io.observe(canvas);
     }
 
+    // ---- Adaptive renderScale governor ----
+    // Watches the actual rAF interval EMA. When the device can't hit
+    // its FPS target consistently, drops renderScale by 0.05 (floor
+    // 0.35). Drop-only: never raises automatically, because we cannot
+    // reliably distinguish "headroom available" from "exactly at the
+    // FPS cap" without GPU-side timer queries (rare on mobile). The
+    // tier ceiling (commit prior) gives the upper bound; the governor
+    // protects against tier misclassification, thermal throttling,
+    // and unknown old hardware.
+    const gov = {
+        ema: 16.67,
+        bottleneckStreak: 0,
+        warmup: 90,  // skip ~1.5s for compile + first-frame hitch
+        lastChangeAt: 0
+    };
+    function governorTick(intervalMs, targetMs, nowMs) {
+        if (gov.warmup > 0) { gov.warmup--; return; }
+        gov.ema = 0.90 * gov.ema + 0.10 * intervalMs;
+        // Need to clearly miss the target by 35% to count as bottleneck.
+        // At target=16.67ms that's ema > 22.5ms — i.e. we're hitting
+        // roughly 45fps or worse on a 60fps target.
+        if (gov.ema > targetMs * 1.35) {
+            if (++gov.bottleneckStreak >= 30) { // ~0.5s of sustained drop
+                const next = Math.max(0.35, +(ui.renderScale - 0.05).toFixed(2));
+                if (next !== ui.renderScale) {
+                    console.log('[bokeh] governor: renderScale',
+                                ui.renderScale, '->', next,
+                                '(ema', gov.ema.toFixed(1) + 'ms)');
+                    ui.renderScale = next;
+                    reflectSlider('renderScale', ui.renderScale);
+                    saveCachedUI();
+                    gov.lastChangeAt = nowMs;
+                    gov.warmup = 60; // re-stabilise
+                }
+                gov.bottleneckStreak = 0;
+            }
+        } else {
+            gov.bottleneckStreak = 0;
+        }
+    }
+    // Reset governor warmup whenever the user touches the slider, so
+    // it doesn't immediately fight a manual change.
+    const rsSlider = document.getElementById('u_renderScale');
+    if (rsSlider) rsSlider.addEventListener('input', () => { gov.warmup = 90; });
+
     let lastFrameMs = 0;
     function render(now) {
         if (!visible || !tabActive || !playing) return;
@@ -487,6 +532,9 @@ async function init() {
             requestAnimationFrame(render);
             return;
         }
+        // Feed the governor the actual rAF interval (only when we
+        // actually rendered a frame, so the FPS cap doesn't fool it).
+        if (lastFrameMs > 0) governorTick(now - lastFrameMs, interval, now);
         lastFrameMs = now;
 
         const nowS = now * 0.001;
