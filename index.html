@@ -22,10 +22,41 @@
             var ua = navigator.userAgent;
             var hasTouch = matchMedia('(pointer: coarse)').matches
                         || (navigator.maxTouchPoints || 0) > 0;
-            var isMobile = /iPhone|iPod/.test(ua)
-                        || (/Android/.test(ua) && /Mobile/.test(ua))
-                        || (hasTouch && Math.min(window.innerWidth, window.innerHeight) < 768);
-            var MOBILE = {
+            var isPhone = /iPhone|iPod/.test(ua)
+                       || (/Android/.test(ua) && /Mobile/.test(ua))
+                       || (hasTouch && Math.min(window.innerWidth, window.innerHeight) < 768);
+            // Tablet = touch device that isn't a phone (iPad, Android
+            // tablet, touch laptop). Gets the same look as desktop but
+            // a lower Render Scale so weaker GPUs stay smooth.
+            var isTablet = !isPhone && hasTouch;
+            // All three presets share the same key set so that every
+            // slider is explicitly initialised; gaps used to fall
+            // through to HTML defaults and stale localStorage.
+            var DESKTOP = {
+                zoom: 1.60, density: 0.29, sharpness: 0.78,
+                diskSize: 0.90, sizeVar: 0.45, diskBrightness: 0.70,
+                bgMix: 0.70,
+                rimChance: 0.08, rimStrength: 0.05, rimThickness: 0.00,
+                rimCoverageMin: 0.08, rimCoverageMax: 0.90,
+                rimSpeckle: 0.75, rimSpeckleScale: 0.75, innerOpacity: 0.60,
+                skyAmount: 1.00, skyThresh: 0.77,
+                greenScale: 3.15,
+                windSpeed: 0.45, windAmp: 0.78,
+                flickerDepth: 0.96, flickerSpeed: 2.00,
+                warmth: 0.48, exposure: 0.90, saturation: 1.15, vignette: 0.80,
+                grainAmount: 0.06, grainSize: 1.50, grainColor: 0.30,
+                mute: 1.00, renderScale: 1.00, maxFps: 60,
+                sunX: 0.91, sunY: 0.87, sunSize: 0.31,
+                sunBloom: 1.55, sunReach: 2.55,
+                rayIntensity: 0.65, rayCount: 30
+            };
+            // Tablet preset = desktop look with reduced internal
+            // resolution. Object.assign keeps every key in sync if
+            // DESKTOP gets new fields later.
+            var TABLET = Object.assign({}, DESKTOP, { renderScale: 0.70 });
+            // Mobile preset inherits the same shape as desktop, just
+            // with phone-specific overrides on the moody / dense end.
+            var MOBILE = Object.assign({}, DESKTOP, {
                 zoom: 1.05, density: 0.30, sharpness: 0.56,
                 diskSize: 1.02, sizeVar: 0.60, diskBrightness: 0.60,
                 bgMix: 0.42,
@@ -36,31 +67,13 @@
                 greenScale: 1.50,
                 windSpeed: 1.00, windAmp: 0.36,
                 flickerDepth: 1.00, flickerSpeed: 1.00,
-                warmth: 0.36, exposure: 0.85, saturation: 1.15, vignette: 0.26,
-                grainAmount: 0.06, grainSize: 1.50, grainColor: 0.30,
+                warmth: 0.36, exposure: 0.85, vignette: 0.26,
+                mute: 0.00, renderScale: 0.55, maxFps: 60,
                 sunX: 0.92, sunY: 0.55, sunSize: 0.35,
                 sunBloom: 0.55, sunReach: 1.60,
                 rayIntensity: 1.20, rayCount: 18
-            };
-            var DESKTOP = {
-                zoom: 1.45, density: 0.29, sharpness: 0.78,
-                diskSize: 0.90, sizeVar: 0.45, diskBrightness: 0.70,
-                bgMix: 0.76,
-                rimChance: 0.08, rimStrength: 0.05, rimThickness: 0.00,
-                rimCoverageMin: 0.08, rimCoverageMax: 0.90,
-                rimSpeckle: 0.75, rimSpeckleScale: 0.75, innerOpacity: 0.60,
-                skyAmount: 1.00, skyThresh: 0.78,
-                greenScale: 2.95,
-                windSpeed: 0.45, windAmp: 0.78,
-                flickerDepth: 0.96, flickerSpeed: 2.00,
-                warmth: 0.48, exposure: 0.90, saturation: 1.15, vignette: 0.80,
-                grainAmount: 0.06, grainSize: 1.50, grainColor: 0.30,
-                mute: 1.00, renderScale: 1.00, maxFps: 60,
-                sunX: 0.91, sunY: 0.87, sunSize: 0.31,
-                sunBloom: 1.55, sunReach: 2.55,
-                rayIntensity: 0.65, rayCount: 30
-            };
-            var D = isMobile ? MOBILE : DESKTOP;
+            });
+            var D = isPhone ? MOBILE : (isTablet ? TABLET : DESKTOP);
             // Expose to main.js so the "Load Defaults" button can
             // re-apply the device-appropriate preset on demand.
             window.__BOKEH_PRESET__ = D;
