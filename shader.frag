@@ -417,18 +417,40 @@ void main() {
     float core = smoothstep(u_sunSize * 0.20, 0.0, sunDist);
     col += C_SUN_CORE * pow(core, 4.0) * 0.6;
 
-    // 5. Subtle diffraction rays masked by a slow FBM (so they sprinkle)
+    // 5. Subtle diffraction rays, coupled to the wind so the sunburst
+    //    sways and breathes as if filtered through rustling leaves.
     if (u_rayIntensity > 0.001) {
-        float ang = atan(uv.y - sunPos.y, uv.x - sunPos.x);
+        // Wind sample at the sun's location. windField is already
+        // warm in cache (used by bokeh drift), so reusing it here is
+        // free. Returns roughly -0.5..0.5 per axis.
+        vec2 wSun = windField(sunPos * 0.4, u_time * u_windSpeed);
+
+        // Sway: rotate the whole sunburst by a small wind-driven
+        // angle. Reads as the rays leaning with the canopy.
+        float sway = wSun.x * 0.18;
+        float ang  = atan(uv.y - sunPos.y, uv.x - sunPos.x) + sway;
+
         // Two sines at related freqs give a beat pattern whose
         // visible spike count tracks u_rayCount.
         float rays = sin(ang * u_rayCount        + u_time * 0.05 * u_windSpeed)
                    * sin(ang * u_rayCount * 1.85 - u_time * 0.03 * u_windSpeed);
         rays = smoothstep(0.85, 1.0, rays);
-        float rayMask = fbm(uv * 8.0 + vec2(u_time * 0.05 * u_windSpeed, 0.0));
+
+        // Mask drift inherits the wind direction so the "sprinkle"
+        // travels with the leaves rather than along a fixed axis.
+        vec2  drift   = vec2(u_time * 0.05 * u_windSpeed, 0.0) + wSun * 0.6;
+        float rayMask = fbm(uv * 8.0 + drift);
         rayMask = smoothstep(0.4, 0.7, rayMask);
+
+        // Slow breath on amplitude: a low-freq sine plus a touch of
+        // wind, so the sunburst never sits at constant brightness.
+        float breath = 0.85
+                     + 0.15 * sin(u_time * 0.5 * max(u_windSpeed, 0.2))
+                     + 0.12 * wSun.y;
+
         float rayFalloff = exp(-sunDist * 1.2);
-        col += C_SUN_CORE * rays * rayMask * rayFalloff * u_rayIntensity * 0.6;
+        col += C_SUN_CORE * rays * rayMask * rayFalloff
+             * u_rayIntensity * 0.6 * breath;
     }
 
     // ---------- Post ----------
