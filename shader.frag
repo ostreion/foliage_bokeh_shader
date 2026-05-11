@@ -313,13 +313,18 @@ vec3 bokehLayer(
 
             float rim = 0.0;
             if (rimGate > 0.001) {
-                // Thicker, uneven band.
+                // Anchor the rim to the body's perceived outer edge,
+                // which sits at dist=rad (the 50% point of the
+                // symmetric body cutoff). This way the rim tracks
+                // the visible boundary regardless of u_sharpness:
+                // when the disk is softly defocused, the rim still
+                // hugs the outside, not a fixed inner radius.
                 float ang = atan(diffR.y, diffR.x);
                 float wobR = vnoise(vec2(ang * 2.1 + hRot * 6.2831, hShape * 7.0)) - 0.5;
                 float wobW = vnoise(vec2(ang * 3.4 - hRim  * 5.1,    hInner * 4.3)) - 0.5;
-                float thick     = mix(0.04, 0.16, u_rimThickness);
-                float rimCenter = rad * (0.92 + wobR * 0.05);
-                float rimHalf   = rad * (thick + wobW * thick * 0.6);
+                float thick     = rad * mix(0.04, 0.16, u_rimThickness);
+                float rimCenter = rad + wobR * rad * 0.04;
+                float rimHalf   = thick + wobW * thick * 0.6;
                 float rimRadial = smoothstep(rimHalf, 0.0, abs(dist - rimCenter));
 
                 // Partial-circumference arc, per-cell start + coverage
@@ -342,8 +347,7 @@ vec3 bokehLayer(
                 float rimMod = 1.0 + speck * u_rimSpeckle;
 
                 rim = rimRadial * arcMask * max(rimMod, 0.0)
-                    * rimAmt * mix(0.75, 1.0, u_sharpness)
-                    * rimGate;
+                    * rimAmt * rimGate;
             }
 
             // Per-circle world-space UV for tinting.
