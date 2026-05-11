@@ -113,6 +113,58 @@ function saveCachedUI() {
     } catch (e) {}
 }
 
+// ---------- GPU tier classification ----------
+// Touch-vs-not picks the *visual* preset (zoom, sharpness, ...) in
+// index.html. Tier picks the *perf* ceilings (renderScale, dprCap,
+// maxFps). They are orthogonal concerns: an iPad Pro is a touch
+// device with a HIGH-tier GPU; a 2014 ThinkPad with Intel HD is
+// non-touch with a LOW-tier GPU.
+const TIER_CAPS = {
+    high: { renderScale: 1.00, dprCap: 1.5,  maxFps: 60 },
+    med:  { renderScale: 0.75, dprCap: 1.5,  maxFps: 60 },
+    low:  { renderScale: 0.50, dprCap: 1.25, maxFps: 30 }
+};
+
+function detectGpuTier(gl) {
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const r = ext ? (gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '') : '';
+    const s = String(r);
+    // HIGH: Apple silicon, recent A-series, discrete NVIDIA/AMD
+    if (/Apple M[0-9]/.test(s)) return 'high';
+    if (/Apple A1[4-9]/.test(s) || /Apple A2[0-9]/.test(s)) return 'high';
+    if (/RTX |GTX 1[6-9]\d{2}|GTX 20\d{2}/.test(s)) return 'high';
+    if (/Radeon Pro|RX 5[5-9]\d{2}|RX [6-9]\d{3}/.test(s)) return 'high';
+    // MED: mid mobile (A10-A13, recent Adreno/Mali) and Intel Iris
+    if (/Apple A1[0-3]/.test(s)) return 'med';
+    if (/Adreno \(?7\d{2}\)?/.test(s)) return 'med';
+    if (/Mali-G7\d/.test(s) || /Mali-G[89]\d/.test(s)) return 'med';
+    if (/Intel.*(Iris|UHD Graphics ([67-9]\d{2}|1\d{3}))/.test(s)) return 'med';
+    if (/Radeon|GeForce/.test(s)) return 'med'; // older/unknown discrete
+    // LOW: explicit older mobile / weak integrated
+    if (/Adreno \(?[345]\d{2}\)?|Adreno \(?6[0-3]\d\)?/.test(s)) return 'low';
+    if (/Mali-[GT][3-6]\d/.test(s)) return 'low';
+    if (/PowerVR/.test(s)) return 'low';
+    if (/Intel.*HD Graphics ([23-5]\d{2,3})?/.test(s)) return 'low';
+    // Unknown / masked renderer (Firefox masks by default, some
+    // Safari versions too). Default to MED, governor handles the
+    // rest at runtime.
+    return 'med';
+}
+
+function applyTierDemotions(tier) {
+    const order = ['high', 'med', 'low'];
+    const demote = (t) => order[Math.min(order.indexOf(t) + 1, order.length - 1)];
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (conn) {
+        if (conn.saveData === true) tier = demote(tier);
+        else if (/^(slow-)?2g$/.test(conn.effectiveType || '')) tier = demote(tier);
+    }
+    if (typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4) {
+        tier = demote(tier);
+    }
+    return tier;
+}
+
 const TOGGLES = [];
 
 function setupUI() {
@@ -184,12 +236,35 @@ async function init() {
     let baseTime = 0;
     let lastNow = 0;
 
-    // Unified DPR cap. Previously phones used 1.25 which (combined
-    // with renderScale 0.55 and native DPR 3) put iPhone backing
-    // store at ~23% of physical screen pixels — visibly grainy/soft
-    // compared to Mac. 1.5 across the board, combined with the
-    // CSS-space grain fix below, brings phone fidelity in line.
-    const dprCap = 1.5;
+    // GPU tier sets the perf ceilings (renderScale, dprCap, maxFps).
+    // Detected once from WEBGL_debug_renderer_info, then demoted on
+    // Save-Data / weak network / low deviceMemory.
+    const tier = applyTierDemotions(detectGpuTier(gl));
+    const caps = TIER_CAPS[tier];
+    const dprCap = caps.dprCap;
+    console.log('[bokeh] GPU tier:', tier, 'caps:', caps);
+
+    // Cap the seeded renderScale and maxFps to tier ceilings once, at
+    // startup. Sliders (if present) reflect the clamped value so the
+    // UI is honest. Users can still drag higher than the cap in dev
+    // mode — the adaptive governor (next commit) will pull it back.
+    function reflectSlider(key, value) {
+        const id = 'u_' + key;
+        const el = document.getElementById(id);
+        if (el) el.value = String(value);
+        const valEl = document.getElementById('val-' + key);
+        if (valEl) valEl.innerText = (typeof value === 'number' ? value : 0).toFixed(2);
+    }
+    if (typeof ui.renderScale === 'number' && ui.renderScale > caps.renderScale) {
+        ui.renderScale = caps.renderScale;
+        reflectSlider('renderScale', ui.renderScale);
+        saveCachedUI();
+    }
+    if (typeof ui.maxFps === 'number' && ui.maxFps > caps.maxFps) {
+        ui.maxFps = caps.maxFps;
+        reflectSlider('maxFps', ui.maxFps);
+        saveCachedUI();
+    }
 
     // Pause render loop when canvas is off-screen or tab is hidden.
     // Saves battery / GPU when the shader is in a section the user
