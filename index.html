@@ -5,20 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Foliage Bokeh Shader</title>
     <script>
-        // Zero-flash mobile preset. Runs synchronously at parse time,
-        // before main.js loads, so loadCachedUI() reads a pre-seeded
-        // localStorage entry rather than merging on the fly. Avoids
-        // any one-frame window where desktop defaults could apply.
+        // Zero-flash device-tuned preset. Runs synchronously at parse
+        // time, before main.js loads, so loadCachedUI() reads a
+        // pre-seeded localStorage entry rather than merging on the
+        // fly. Avoids any one-frame window where the wrong defaults
+        // could apply.
         (function () {
             var KEY = 'foliage-bokeh-ui-v1';
             var isMobile = matchMedia('(pointer: coarse)').matches
                         || (navigator.maxTouchPoints || 0) > 0
                         || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-            if (!isMobile) return;
-            var existing = {};
-            try { existing = JSON.parse(localStorage.getItem(KEY) || '{}'); }
-            catch (e) {}
-            var D = {
+            var MOBILE = {
                 branchEnabled: true,
                 zoom: 1.05, density: 0.30, sharpness: 0.56,
                 diskSize: 1.02, sizeVar: 0.60, diskBrightness: 0.60,
@@ -38,6 +35,31 @@
                 sunBloom: 0.55, sunReach: 1.60,
                 rayIntensity: 1.20, rayCount: 18
             };
+            var DESKTOP = {
+                branchEnabled: false,
+                zoom: 1.45, density: 0.29, sharpness: 0.78,
+                diskSize: 0.90, sizeVar: 0.45, diskBrightness: 0.70,
+                bgMix: 0.76,
+                rimChance: 0.08, rimStrength: 0.05, rimThickness: 0.00,
+                rimCoverageMin: 0.08, rimCoverageMax: 0.90,
+                rimSpeckle: 0.75, rimSpeckleScale: 0.75, innerOpacity: 0.60,
+                branchAmount: 0.66, branchThresh: 0.55, branchAngle: 1.05,
+                branchWidth: 0.56, branchOcclude: 0.26,
+                leafCover: 0.84, skyAmount: 1.00, skyThresh: 0.78,
+                greenScale: 2.95,
+                windSpeed: 0.45, windAmp: 0.78,
+                flickerDepth: 0.96, flickerSpeed: 2.00,
+                warmth: 0.48, exposure: 0.90, saturation: 1.15, vignette: 0.80,
+                grainAmount: 0.06, grainSize: 1.50, grainColor: 0.30,
+                mute: 1.00, renderScale: 1.00, maxFps: 60,
+                sunX: 0.91, sunY: 0.87, sunSize: 0.31,
+                sunBloom: 1.55, sunReach: 2.55,
+                rayIntensity: 0.65, rayCount: 30
+            };
+            var D = isMobile ? MOBILE : DESKTOP;
+            var existing = {};
+            try { existing = JSON.parse(localStorage.getItem(KEY) || '{}'); }
+            catch (e) {}
             var changed = false;
             for (var k in D) {
                 if (!(k in existing)) { existing[k] = D[k]; changed = true; }
