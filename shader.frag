@@ -166,7 +166,12 @@ float branchField(vec2 uv) {
 //   - sparse pale bluish-green sky-peek hot spots
 //
 // One fbm + two vnoise calls; cheap enough to evaluate per disk.
-vec3 sceneColor(vec2 uv, vec2 sunPos) {
+// includeSky controls whether the sky-peek hot spots are baked into
+// the returned color. The background pass uses includeSky=false so
+// sky shapes aren't visible as a flat layer between disks; the disk
+// tint pass uses includeSky=true so disks landing on sky cells read
+// pale-cyan and reveal the sky through bokeh alone.
+vec3 sceneColor(vec2 uv, vec2 sunPos, bool includeSky) {
     // Slow temporal evolution so the canopy "breathes" with the wind
     float tt = u_time * 0.04 * u_windSpeed;
 
@@ -193,18 +198,18 @@ vec3 sceneColor(vec2 uv, vec2 sunPos) {
     col = mix(col, branchColor, branch * u_branchAmount);
 
     // Sparse sky-peek: pale, slightly cool. Warmer near the sun.
-    float sn = vnoise(uv * 4.0 + vec2(0.0, tt * 0.5));
-    // Gate the branch-suppression by u_branchAmount: when branches
-    // are off, sky-peek reverts to pure isotropic noise (soft blobs).
-    // Otherwise the anisotropic branch shape would carve crisp
-    // diagonal slits through the sky patches even with branches
-    // disabled.
-    float sky = smoothstep(u_skyThresh, u_skyThresh + 0.12, sn)
-              * (1.0 - branch * u_branchAmount);
-    vec3  skyCool = vec3(0.55, 0.68, 0.55);
-    vec3  skyWarm = vec3(0.85, 0.78, 0.50);
-    vec3  skyColor = mix(skyCool, skyWarm, sunMix * 0.7);
-    col = mix(col, skyColor, sky * u_skyAmount);
+    // Only contributes when includeSky is true (i.e. for disk
+    // tinting). The background pass skips this so sky shapes don't
+    // leak through as a visible flat layer between disks.
+    if (includeSky) {
+        float sn = vnoise(uv * 4.0 + vec2(0.0, tt * 0.5));
+        float sky = smoothstep(u_skyThresh, u_skyThresh + 0.12, sn)
+                  * (1.0 - branch * u_branchAmount);
+        vec3  skyCool = vec3(0.55, 0.68, 0.55);
+        vec3  skyWarm = vec3(0.85, 0.78, 0.50);
+        vec3  skyColor = mix(skyCool, skyWarm, sunMix * 0.7);
+        col = mix(col, skyColor, sky * u_skyAmount);
+    }
 
     return col;
 }
@@ -335,7 +340,7 @@ vec3 bokehLayer(
             // Disk samples the SAME scene field that paints the background,
             // so the bokeh inherits local branch / sky-peek / sun tint.
             vec2 cellUV = (cell + r) / gridScale;
-            vec3 tint = sceneColor(cellUV, sunPos);
+            vec3 tint = sceneColor(cellUV, sunPos, true);
 
             acc += (disk + rim) * gap * tint * brightness;
         }
@@ -346,7 +351,7 @@ vec3 bokehLayer(
 // Background canopy: a dimmed sample of the same scene field.
 // Disks and background therefore share one palette.
 vec3 background(vec2 uv, vec2 sunPos) {
-    return sceneColor(uv, sunPos) * u_bgMix;
+    return sceneColor(uv, sunPos, false) * u_bgMix;
 }
 
 // ACES Filmic tone mapping
