@@ -90,6 +90,46 @@
             display: block;
             width: 100vw;
             height: 100vh;
+            /* Off by default so the canvas never swallows page
+               scroll / clicks when used as a hero background. The
+               #interact-toggle pill flips it to `auto` on demand. */
+            pointer-events: none;
+        }
+        canvas.interactive {
+            pointer-events: auto;
+            cursor: grab;
+        }
+        canvas.interactive:active { cursor: grabbing; }
+        #interact-toggle {
+            position: absolute;
+            right: 16px;
+            bottom: 16px;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 20, 15, 0.55);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            border-radius: 50%;
+            color: #ccc;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            user-select: none;
+            opacity: 0.55;
+            transition: opacity 0.2s, background 0.2s, color 0.2s, border-color 0.2s;
+            pointer-events: auto;
+            z-index: 2;
+        }
+        #interact-toggle:hover { opacity: 1.0; }
+        #interact-toggle.active {
+            opacity: 1.0;
+            background: rgba(220, 230, 200, 0.18);
+            border-color: rgba(220, 230, 200, 0.45);
+            color: #fff;
         }
         #ui-panel {
             position: absolute;
@@ -253,6 +293,7 @@
     <canvas id="glcanvas"></canvas>
 
     <div id="playpause" title="Pause animation">⏸</div>
+    <div id="interact-toggle" title="Enable pan (currently disabled)" aria-label="Toggle pan">✥</div>
 
     <div id="ui-panel">
         <div id="ui-header">

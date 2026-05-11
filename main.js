@@ -364,6 +364,28 @@ async function init() {
         }
     });
 
+    // ---- Pan-interactive toggle ----
+    // The canvas has `pointer-events: none` by default so wheel /
+    // touch / mouse never reach it - the page scrolls normally even
+    // when the cursor is over the hero. The pill flips a class to
+    // `pointer-events: auto`, letting the handlers below activate.
+    const interactBtn = document.getElementById('interact-toggle');
+    if (interactBtn) {
+        let interactive = false;
+        const syncInteract = () => {
+            canvas.classList.toggle('interactive', interactive);
+            interactBtn.classList.toggle('active', interactive);
+            interactBtn.title = interactive
+                ? 'Disable pan (scroll passes through canvas)'
+                : 'Enable pan (currently disabled)';
+        };
+        interactBtn.addEventListener('click', () => {
+            interactive = !interactive;
+            syncInteract();
+        });
+        syncInteract();
+    }
+
     // ---- Touch / mouse pan with inertia + rubber-band bounds ----
     // u_pan is in uv-space; one unit ≈ canvas height. Keep bounds
     // small so the user can wander a little, not get lost.
